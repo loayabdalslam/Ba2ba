@@ -1,0 +1,31 @@
+[package]
+name = "bee2bee-core"
+version = "0.1.0"
+edition = "2021"
+description = "Bee2Bee desktop core: identity, P2P client, Ollama and local node management"
+license = "MIT"
+
+[dependencies]
+base64 = "0.22"
+ed25519-dalek = { version = "2", features = ["rand_core", "pkcs8", "pem"] }
+futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
+hex = "0.4"
+rand = "0.8"
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+thiserror = "2"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "process", "sync", "time", "io-util", "fs"] }
+tokio-tungstenite = { version = "0.26", features = ["rustls-tls-webpki-roots"] }
+tokio-util = "0.7"
+url = "2"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_System_JobObjects", "Win32_System_Threading", "Win32_Security"] }
+
+[dev-dependencies]
+tempfile = "3"

@@ -1069,16 +1069,12 @@ async def run_p2p_node(
             scheme = "https" if node.settings.tls_enabled else "http"
             console.print(f"[cyan]HTTP API:[/cyan] {scheme}://{node.settings.api_host}:{api_port}")
         if model_name:
-            from urllib.parse import quote
-
             from .p2p import generate_join_link, sha256_hex_bytes
 
             link = generate_join_link("bee2bee", model_name, sha256_hex_bytes(model_name.encode()), [node.addr])
             console.print(f"[cyan]Join link:[/cyan] {link}")
-            reg = f"https://coithub.org/register?link={quote(link, safe='')}&region={quote(node.region, safe='')}&tag={quote(backend, safe='')}"
-            if api_port:
-                reg += f"&api_port={api_port}"
-            console.print(f"[cyan]Register on the dashboard:[/cyan] {reg}")
+        if node.directory.enabled:
+            console.print(f"[cyan]Announcing to directory:[/cyan] {node.settings.directory_url}")
         console.print("[dim]Press Ctrl+C to stop.[/dim]")
         await stop_event.wait()
     finally:

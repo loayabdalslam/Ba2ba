@@ -4,12 +4,21 @@
 
 | Component | Where | Why |
 |---|---|---|
-| Web app | Any static host (Vercel config included) or served by the gateway | Static files |
+| Desktop app | Users' computers (installers from GitHub releases) | Chat, explore, deploy |
+| Directory server | Vercel + Neon | Lists online nodes for the desktop app |
 | Gateway | A long-running container (Fly.io, Railway, a VM, Kubernetes) | Holds WebSocket connections to nodes; **not** serverless |
 | Nodes | Wherever the GPUs are | Must be reachable on their P2P port (directly or via a TLS proxy/tunnel) |
 | Database | Supabase | Registry, accounts, keys, usage, history |
 
-## 1. Database
+## 0. Directory server (Vercel + Neon)
+
+1. Create a Neon project; copy the **pooled** connection string.
+2. `cd server && npm ci && DATABASE_URL=... npm run migrate`
+3. In Vercel, import the repository with **Root Directory = `server`** and add `DATABASE_URL`.
+4. Set the repository variable `DIRECTORY_URL` (Settings → Variables) to the Vercel URL so desktop
+   builds default to it, and start nodes with `BEE2BEE_DIRECTORY_URL=<that URL>`.
+
+## 1. Database (gateway accounts and API keys)
 
 ```bash
 supabase link --project-ref <ref>
@@ -19,12 +28,10 @@ supabase db push            # applies supabase/migrations
 Or paste `supabase/migrations/*.sql` into the SQL editor. Enable the `pg_cron` extension to prune stale
 nodes automatically. Configure Auth (email magic links, optionally GitHub) and set the site URL.
 
-## 2. Gateway (+ web app)
+## 2. Gateway (OpenAI-compatible API)
 
 ```bash
-docker build -f gateway/Dockerfile -t bee2bee-gateway \
-  --build-arg VITE_SUPABASE_URL=https://<ref>.supabase.co \
-  --build-arg VITE_SUPABASE_ANON_KEY=<anon key> .
+docker build -f gateway/Dockerfile -t bee2bee-gateway .
 docker run -d --name gateway -p 3001:3001 -v gateway-data:/data \
   -e SUPABASE_URL=https://<ref>.supabase.co -e SUPABASE_ANON_KEY=<anon> \
   -e SUPABASE_SERVICE_ROLE_KEY=<service role> \
@@ -36,8 +43,8 @@ Put it behind TLS (see `deploy/Caddyfile`). On Fly.io use `deploy/fly.gateway.to
 (`auto_stop_machines = "off"` because the gateway keeps node connections open). The identity key lives
 in the `/data` volume; keep it so nodes can keep trusting the same peer id.
 
-If the web app is hosted separately (e.g. Vercel), edit the rewrite destinations in `app/vercel.json`
-to point at your gateway, or set `VITE_API_BASE_URL` and `CORS_ORIGINS`.
+API keys for the gateway are created through `POST /api/keys` with a Supabase user session, or
+configured statically with `STATIC_API_KEYS` for self-hosted setups.
 
 ## 3. Nodes
 
@@ -56,10 +63,17 @@ Keep the node's HTTP API (4002) private unless you need it; it is protected by a
 
 - `curl https://coithub.example.com/readyz` shows `nodes > 0`.
 - `curl https://coithub.example.com/api/p2p/status` lists the node.
-- Create an API key in the web app and run `loadtest/quick.mjs` briefly.
+- Open the desktop app → Explore network: your node is listed as online and reachable.
+- Run `loadtest/quick.mjs` against the gateway with an API key.
 
 ## Releases
 
-Tag `vX.Y.Z` (matching `bee2bee/_version.py`) to publish the package to PyPI (trusted publishing: add the
+Desktop: bump `version` in `desktop/package.json` and `desktop/src-tauri/Cargo.toml`, then push a tag
+`desktop-vX.Y.Z`. `.github/workflows/desktop.yml` verifies the app (lint, types, tests, clippy, Rust
+interop tests), builds installers for Linux (.deb, .AppImage, .rpm), Windows (.msi, .exe) and macOS
+(.dmg, Intel and Apple Silicon) and publishes them as a GitHub release. Pull requests get the same
+builds as downloadable artifacts. Configure the `APPLE_*` secrets to sign and notarize macOS builds.
+
+Python package and images: tag `vX.Y.Z` (matching `bee2bee/_version.py`) to publish the package to PyPI (trusted publishing: add the
 repository as a trusted publisher on PyPI and create a `pypi` environment), push Docker images to GHCR
 and create a GitHub release from `CHANGELOG.md`.

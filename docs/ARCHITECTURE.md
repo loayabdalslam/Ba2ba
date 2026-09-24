@@ -3,9 +3,10 @@
 ```mermaid
 flowchart LR
   subgraph Clients
-    B[Browser: CoitHub web app]
+    D[Desktop app\nTauri + React]
     S[OpenAI SDK / curl]
   end
+  DIR[(Directory server\nVercel + Neon)]
   subgraph Gateway["Gateway (Node.js, long-running)"]
     H[HTTP API\n/api/p2p/*, /v1/*, /api/keys]
     M[Mesh client\nEd25519 identity]
@@ -16,9 +17,11 @@ flowchart LR
     N2[Node B\ntransformers]
     N3[Node C\nrelay]
   end
-  B -- HTTPS --> H
+  D -- wss, signed handshake --> N1
+  D -- HTTPS: search nodes --> DIR
+  N1 -- signed heartbeats --> DIR
+  DIR -. probe .-> N1
   S -- HTTPS + API key --> H
-  B -- supabase-js, RLS --> DB
   H -- service role --> DB
   H --- M
   M -- wss, signed handshake --> N1
@@ -44,8 +47,16 @@ before the first token, and cancels generations when clients disconnect. It is t
 holding the Supabase service-role key. It verifies node registrations (signature, replay protection
 and a connect-back probe that checks the address really belongs to that peer id).
 
-**Web app (`app/`)**. A static React SPA. It talks only to the gateway. Signed-in users read and write
-their chat history directly in Supabase, protected by row-level security.
+**Desktop app (`desktop/`)**. Tauri 2 with a React UI in a ChatGPT-like layout. The Rust side
+(`desktop/src-tauri/core`) holds an Ed25519 client identity, speaks the P2P protocol directly to any node
+(chat streaming, cancellation, identity verification), manages local `bee2bee serve-*` processes
+(deployments with logs and auto-start) and talks to the local Ollama (list, pull, delete). The UI queries
+the directory server over HTTPS. Conversations are stored only on the user's computer.
+
+**Directory server (`server/`)**. Vercel functions on Neon Postgres. Nodes send signed heartbeats every
+30 s; the server verifies them, probes new or changed addresses with the P2P handshake, and serves
+search/filter endpoints (model, provider, region, speed, latency, uptime) plus statistics. It never
+relays chat traffic. See `server/README.md`.
 
 **Database (`supabase/`)**. `active_nodes` (public read of verified, fresh nodes; no client writes),
 `api_keys` (hashes only, never readable by clients), `usage_events`, `conversations`, `messages`,

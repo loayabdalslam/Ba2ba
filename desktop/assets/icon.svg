@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1f1f1f"/>
+      <stop offset="1" stop-color="#000"/>
+    </linearGradient>
+  </defs>
+  <rect x="64" y="64" width="896" height="896" rx="200" fill="url(#bg)"/>
+  <!-- Honeycomb: three hexagons = nodes of the mesh -->
+  <g fill="none" stroke="#f5b82e" stroke-width="44" stroke-linejoin="round">
+    <path d="M512 232 L620 294 L620 418 L512 480 L404 418 L404 294 Z"/>
+    <path d="M388 452 L496 514 L496 638 L388 700 L280 638 L280 514 Z"/>
+    <path d="M636 452 L744 514 L744 638 L636 700 L528 638 L528 514 Z"/>
+  </g>
+  <g fill="#ffffff">
+    <circle cx="512" cy="356" r="40"/>
+    <circle cx="388" cy="576" r="40"/>
+    <circle cx="636" cy="576" r="40"/>
+  </g>
+  <path d="M512 356 L388 576 L636 576 Z" fill="none" stroke="#ffffff" stroke-width="16" stroke-opacity="0.55"/>
+  <text x="512" y="838" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-weight="700" font-size="104" fill="#ffffff" letter-spacing="6">B2B</text>
+</svg>

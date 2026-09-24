@@ -30,7 +30,7 @@ the hardware allows.
 bootstrap nodes, remove it via `BEE2BEE_ALLOWED_PEERS` (private mesh) or block its address at the
 firewall. Its reputation drops automatically when it errors.
 
-**Leaked API key.** The user revokes it in the web app, or an operator sets `revoked_at` in `api_keys`.
+**Leaked API key.** The user revokes it with `DELETE /api/keys/:id`, or an operator sets `revoked_at` in `api_keys`.
 It stops working immediately.
 
 **Leaked Supabase service-role key.** Rotate it in Supabase, update the gateway secret, restart the

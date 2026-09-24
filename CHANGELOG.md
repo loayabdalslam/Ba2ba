@@ -3,6 +3,21 @@
 All notable changes are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/)
 and the project uses [Semantic Versioning](https://semver.org/).
 
+## [4.1.0] - 2026-09-24
+
+### Added
+- **Desktop app** (`desktop/`, Tauri 2 + React): ChatGPT-style chat with any node over the P2P protocol,
+  network explorer with filters, control center, local node deployments with logs, Ollama model
+  management. Rust core crate with tests, including interop with a real Python node.
+- **Directory server** (`server/`, Vercel + Neon): online nodes, search and filters by model, provider,
+  region, speed and latency, uptime, statistics. Nodes announce themselves with signed heartbeats and
+  are probed before being marked reachable.
+- Node options `--name` / `BEE2BEE_NODE_NAME`, `BEE2BEE_DIRECTORY_URL`.
+- `Desktop app` workflow: verify, build installers for Windows/macOS/Linux, release on `desktop-v*` tags.
+
+### Removed
+- The React web app (`app/`), replaced by the desktop app. The gateway image no longer bundles a UI.
+
 ## [4.0.0] - 2026-09-24
 
 Production-readiness release. **Breaking:** the wire protocol is now version 2 and does not interoperate

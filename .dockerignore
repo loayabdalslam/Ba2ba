@@ -5,6 +5,6 @@
 **/*.egg-info
 .git
 notebook
-app/test-results
-app/playwright-report
+desktop
+server
 **/.env

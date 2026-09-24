@@ -48,7 +48,7 @@ All variables are optional. CLI flags override them where both exist.
 | `BEE2BEE_SEEDS` | | Comma-separated node addresses to connect to |
 | `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` | | Enables registry, accounts, API keys, usage |
 | `GATEWAY_KEY_FILE` / `GATEWAY_PRIVATE_KEY` | ephemeral | Stable Ed25519 identity (set one in production so nodes can trust it) |
-| `CORS_ORIGINS` | none | Allowed browser origins if the web app is on another origin |
+| `CORS_ORIGINS` | none | Allowed browser origins for browser-based API clients |
 | `TRUST_PROXY` | `false` | Trust one proxy hop for client IPs |
 | `ALLOW_PRIVATE_NODES` | `false` | Allow private node addresses (Compose/LAN only) |
 | `REQUIRE_TLS_NODES` | `false` | Only connect to `wss://` nodes |
@@ -61,10 +61,23 @@ All variables are optional. CLI flags override them where both exist.
 | `OPEN_API` | `false` | Allow `/v1` without a key (development only) |
 | `PROBE_NODE_REGISTRATIONS` | `true` | Connect back to verify self-registrations |
 | `METRICS_TOKEN` | | Bearer token required for `/metrics` |
-| `STATIC_DIR` | | Serve the built web app from this directory |
+| `STATIC_DIR` | | Optionally serve a static web front end from this directory |
 | `LOG_LEVEL` / `SENTRY_DSN` | `info` / | Logging / error reporting (`@sentry/node` optional) |
 
-## Web app (build time, public)
+## Directory server (`server/`)
 
-`VITE_API_BASE_URL`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_AUTH_GITHUB`, `VITE_CLARITY_ID`.
-Never put secrets in `VITE_*` variables; they are embedded in the JavaScript bundle.
+| Variable | Default | Description |
+|---|---|---|
+| `DATABASE_URL` | | Neon (pooled) connection string |
+| `ONLINE_WINDOW_SECONDS` | `90` | A node is online if its last heartbeat is newer than this |
+| `ALLOW_PRIVATE_NODES` | `false` | Allow probing private addresses (local testing only) |
+| `CORS_ORIGINS` | | Extra browser origins; the Tauri app origins are always allowed |
+
+Nodes: `BEE2BEE_DIRECTORY_URL` (directory to announce to), `BEE2BEE_DIRECTORY_INTERVAL` (default 30 s),
+`BEE2BEE_NODE_NAME` (display name, default hostname).
+
+## Desktop app
+
+Settings are edited in the app (directory URL, bee2bee/Python commands, Ollama address, theme, chat
+defaults). `VITE_DIRECTORY_URL` sets the default directory URL at build time (the release workflow reads
+the `DIRECTORY_URL` repository variable).

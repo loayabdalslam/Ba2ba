@@ -4,13 +4,20 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 Bee2Bee is a peer-to-peer network for serving open AI models. Anyone can run a **node** that serves a
-model (Ollama, a local Hugging Face model, or the Hugging Face Inference API). Users reach the mesh
-through the **gateway**: a web chat at [coithub.org](https://coithub.org) and an OpenAI-compatible API.
+model (Ollama, a local Hugging Face model, or the Hugging Face Inference API).
+
+- The **desktop app** (`desktop/`, Tauri + React) is the control center: chat with any node, explore the
+  network, and deploy your own nodes and models.
+- The **directory server** (`server/`, Vercel + Neon) tells the app which nodes are online, with their
+  models, providers, speed, latency and uptime.
+- The **gateway** (`gateway/`) exposes the mesh as an OpenAI-compatible API.
 
 ```
-browser / OpenAI SDK ──HTTPS──▶ gateway ──wss (signed handshake)──▶ node ──▶ Ollama / transformers / HF API
-                                   │                                  ▲
-                                   └── Supabase (registry, keys, usage) └── relays to other nodes
+desktop app ──wss (signed handshake)──────────────▶ node ──▶ Ollama / transformers / HF API
+     │                                               │  ▲
+     └──HTTPS──▶ directory server (Vercel + Neon) ◀──┘  └── relays to other nodes
+                    signed heartbeats, probes
+OpenAI SDK ──HTTPS──▶ gateway ──wss──▶ node
 ```
 
 - **Verified identities**: every node and gateway has an Ed25519 key; its `peer_id` is derived from the
@@ -52,10 +59,19 @@ curl -s localhost:4002/v1/chat/completions -H "Authorization: Bearer $KEY" \
   -d '{"model":"llama3.2","messages":[{"role":"user","content":"Hello"}]}'
 ```
 
-### Run the whole stack locally
+### Desktop app
+
+Download the installer for Windows, macOS or Linux from the GitHub releases (tag `desktop-v*`), or run it
+from source:
 
 ```bash
-docker compose up --build     # demo node + gateway + web app on http://localhost:3001
+cd desktop && npm ci && npm run tauri dev
+```
+
+### Run the backend locally
+
+```bash
+docker compose up --build     # demo node + gateway API on http://localhost:3001
 ```
 
 ## CLI
@@ -66,6 +82,7 @@ docker compose up --build     # demo node + gateway + web app on http://localhos
 | `bee2bee relay` | Node without a model |
 | `bee2bee api-key [--rotate]` | Show or rotate the local API key |
 | `bee2bee identity` | Show the node's peer id and public key |
+| `--name` / `BEE2BEE_NODE_NAME`, `BEE2BEE_DIRECTORY_URL` | Name shown in the directory / directory to announce to |
 | `bee2bee config bootstrap_url wss://host:4003` | Persist a bootstrap peer |
 | `bee2bee register` | Register once with the registry (normally automatic) |
 
@@ -77,7 +94,8 @@ All settings are environment variables; see [docs/CONFIGURATION.md](docs/CONFIGU
 |---|---|
 | `bee2bee/` | Python package: node, protocol, backends, HTTP API, CLI |
 | `gateway/` | Node.js gateway: mesh bridge, web/OpenAI API, accounts, registry |
-| `app/` | React/TypeScript web app (CoitHub) |
+| `desktop/` | Tauri + React desktop app (chat, explore, deploy, models) |
+| `server/` | Directory server for Vercel + Neon |
 | `supabase/` | Database migrations and RLS tests |
 | `deploy/`, `Dockerfile`, `docker-compose.yml` | Deployment |
 | `loadtest/` | k6 and dependency-free load tests |
@@ -94,7 +112,9 @@ All settings are environment variables; see [docs/CONFIGURATION.md](docs/CONFIGU
 ```bash
 pip install -e ".[dev]" && ruff check bee2bee tests && mypy && pytest
 (cd gateway && npm ci && npm run lint && npm test)
-(cd app && npm ci && npm run lint && npm run typecheck && npm test && npm run test:e2e)
+(cd server && npm ci && npm run lint && npm run typecheck && TEST_DATABASE_URL=postgres://... npm test)
+(cd desktop && npm ci && npm run lint && npm run typecheck && npm test && npm run build)
+(cd desktop/src-tauri && cargo fmt --check && cargo clippy --workspace -- -D warnings && cargo test --workspace)
 PGHOST=... PGUSER=postgres supabase/tests/run.sh
 ```
 

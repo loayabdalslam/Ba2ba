@@ -1,5 +1,5 @@
-# Local full stack: one demo node, the gateway and the web app.
-#   docker compose up --build            -> http://localhost:3001
+# Local stack: one demo node and the gateway API (the UI is the desktop app in desktop/).
+#   docker compose up --build            -> API on http://localhost:3001
 #   docker compose --profile ollama up   -> also run Ollama (then use serve-ollama, see below)
 # Copy .env.example to .env to configure Supabase and other settings.
 services:
@@ -21,9 +21,6 @@ services:
     build:
       context: .
       dockerfile: gateway/Dockerfile
-      args:
-        VITE_SUPABASE_URL: ${SUPABASE_URL:-}
-        VITE_SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY:-}
     environment:
       BEE2BEE_SEEDS: ws://node:4003
       ALLOW_PRIVATE_NODES: "true" # compose uses a private network; keep false in production

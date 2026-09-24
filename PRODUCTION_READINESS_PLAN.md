@@ -6,6 +6,38 @@
 
 ---
 
+## ✅ حالة التنفيذ (تم تحديثها بعد التنفيذ)
+
+الأرقام دي بتشاور على البنود اللي في §3.
+
+| البند | الحالة | الملاحظة |
+|---|---|---|
+| 1–9 (P0 bugs) | ✅ اتعمل | الـ protocol اتوحد (v2)، الـ streaming بقى موحد، شلنا `requests` لصالح `httpx`، الـ Dockerfile والـ workflow اتصلحوا، كل الـ blocking I/O بقى في threads |
+| 10–11 (Supabase) | ✅ اتعمل | migration جديدة فيها RLS صارمة، والكتابة بقت بالـ service role من الـ gateway بس. عليها اختبارات أوتوماتيك على Postgres |
+| 12 (هوية الـ nodes) | ✅ اتعمل | مفاتيح Ed25519، والـ `peer_id` مشتق من المفتاح، وفيه challenge/response في الاتجاهين |
+| 13 (SSRF) | ✅ اتعمل | `/connect` بقى POST ومحمي، `?target=` اتشال، والـ DNS بيتفحص لحظة الاتصال |
+| 14–18 (API/CORS/TLS/token/limits) | ✅ اتعمل | الـ API مقفول افتراضيًا، CORS بقى allowlist، شلنا الـ downgrade لـ ws، الـ HF token بقى من env، وفيه rate limits وحدود على المدخلات |
+| 19–20 | ✅ اتعمل | scrypt بدل sha256، وشلنا الـ metrics المتأليفة |
+| 21–29 (Reliability) | ✅ اتعمل | reconnect/backoff، طرد الـ peers الميتة، cancel، failover، hop limit، مطابقة موديلات دقيقة، تنضيف بـ pg_cron، gateway مستقل بدل Vercel، graceful shutdown |
+| 30–31 (Tests/CI) | ✅ اتعمل | 91 اختبار Python + 37 للـ gateway (فيهم interop مع Python node حقيقي) + 5 vitest + 6 Playwright E2E + اختبارات RLS، وكلهم في CI |
+| 32 (أدوات الجودة) | ✅ اتعمل | ruff + mypy + eslint، و`App.jsx` اتقسم لصفحات ومكونات TypeScript |
+| 33–36 | ✅ اتعمل | dependencies متنضفة، الكود الميت اتشال، الأسماء اتوحدت على `BEE2BEE_*`، و`.gitignore` اتصلح |
+| 37–43 (Ops) | ✅ اتعمل | JSON logs و`/healthz` `/readyz` `/metrics` وSentry اختياري وconfig validation وDocker/compose وrelease pipeline |
+| 44–45 | ✅ اتعمل | تسجيل دخول (magic link/GitHub) و`/v1/chat/completions` على الـ node والـ gateway |
+| 46 (Billing) | 🟡 جزئي | فيه quotas شهرية لكل API key وتتبع استهلاك حقيقي، لكن مفيش دفع (Stripe) |
+| 47 (Trust) | 🟡 جزئي | فيه reputation مبنية على نجاح وفشل الطلبات، لكن مفيش spot-checking لجودة الإجابات |
+| 48 (Privacy) | 🟡 جزئي | تحذير واضح في الواجهة + Privacy/Terms، لكن النصوص **مسودات محتاجة مراجعة قانونية**. التشفير من الطرف للطرف مش ممكن بطبيعة التصميم، وده مكتوب بوضوح |
+| 49 (History) | ✅ اتعمل | محفوظ في Supabase وعليه RLS، والمستخدم يقدر يقفله أو يمسحه |
+
+### المتبقي، ومحتاج قرار أو حسابات منك
+- **ربط الإنتاج الفعلي:** مشروع Supabase، ودومين الـ gateway، وتعديل `app/vercel.json` للدومين الحقيقي، وإعداد PyPI trusted publishing وبيئة `pypi` على GitHub.
+- **Staging + alerting:** قواعد التنبيه مكتوبة في `docs/RUNBOOK.md` لكن محتاجة Prometheus/Grafana أو خدمة مراقبة.
+- **Sentry للـ frontend:** أخطاء الواجهة دلوقتي بتتبعت لـ logs الـ gateway، مش لـ Sentry.
+- **الـ CI على GitHub:** الـ workflows اتكتبت واتفحصت محليًا (نفس الأوامر نجحت)، لكنها لسه ما اشتغلتش على GitHub Actions.
+- **Breaking change:** البروتوكول v2 مش متوافق مع nodes الإصدار 3.x، فكل الـ nodes لازم تتحدث.
+
+---
+
 ## 1. المشروع بيتكون من إيه؟
 
 | الجزء | المكان | الوظيفة |

@@ -7,6 +7,7 @@ validated once at startup instead of being read ad hoc with ``os.getenv``.
 from __future__ import annotations
 
 import os
+import socket
 from functools import lru_cache
 from typing import Any, Dict, List, Optional
 
@@ -100,6 +101,10 @@ class Settings(BaseModel):
     # --- Registry ---------------------------------------------------------
     # Gateway that accepts signed node registrations (preferred).
     registry_url: Optional[str] = None
+    # Central directory (server/) that lists online nodes for desktop clients.
+    directory_url: Optional[str] = None
+    directory_interval: float = Field(default=30.0, ge=10)
+    node_name: str = Field(default_factory=lambda: socket.gethostname()[:64] or "bee2bee-node", min_length=1, max_length=64)
     # Operator-only direct mode. Never ship the service-role key to clients.
     supabase_url: Optional[str] = None
     supabase_service_key: Optional[str] = None
@@ -180,6 +185,9 @@ def load_settings(**overrides) -> Settings:
         registry_interval=_env_float("REGISTRY_INTERVAL", 30.0),
         handshake_timeout=_env_float("HANDSHAKE_TIMEOUT", 10.0),
         registry_url=_env("REGISTRY_URL"),
+        directory_url=_env("DIRECTORY_URL"),
+        directory_interval=_env_float("DIRECTORY_INTERVAL", 30.0),
+        node_name=(_env("NODE_NAME") or socket.gethostname() or "bee2bee-node")[:64],
         supabase_url=_env("SUPABASE_URL") or os.getenv("SUPABASE_URL"),
         supabase_service_key=_env("SUPABASE_SERVICE_KEY") or os.getenv("SUPABASE_SERVICE_ROLE_KEY"),
         ollama_host=_env("OLLAMA_HOST") or os.getenv("OLLAMA_HOST") or "http://localhost:11434",

@@ -20,6 +20,7 @@ from websockets.exceptions import ConnectionClosed
 
 from . import protocol as P
 from ._version import __version__
+from .directory import DirectoryClient
 from .identity import Identity, new_nonce
 from .metrics import Registry
 from .netutil import AddressError, validate_peer_addr
@@ -203,6 +204,7 @@ class P2PNode:
         self.known_addrs: Set[str] = set()
 
         self.registry = RegistryClient(self.settings, self.identity)
+        self.directory = DirectoryClient(self.settings, self.identity)
         self.metrics = Registry()
         self._m_gen = self.metrics.counter("bee2bee_generations_total", "Generation requests by source and outcome")
         self._m_gen_latency = self.metrics.histogram("bee2bee_generation_seconds", "End-to-end generation latency")
@@ -336,6 +338,7 @@ class P2PNode:
             except Exception:
                 pass
         await self.registry.close()
+        await self.directory.close()
         if self._forwarder is not None:
             try:
                 await self._forwarder.cleanup()
@@ -596,6 +599,7 @@ class P2PNode:
 
     async def _maintenance_loop(self) -> None:
         last_registry = 0.0
+        last_directory = 0.0
         while self._running:
             try:
                 self._local_metrics = await asyncio.to_thread(get_system_metrics)
@@ -611,6 +615,9 @@ class P2PNode:
                 if self.registry.enabled and now - last_registry >= self.settings.registry_interval:
                     last_registry = now
                     await self.sync_with_registry()
+                if self.directory.enabled and now - last_directory >= self.settings.directory_interval:
+                    last_directory = now
+                    await self.send_directory_heartbeat()
             except asyncio.CancelledError:
                 raise
             except Exception:
@@ -657,6 +664,20 @@ class P2PNode:
             metrics={**self._local_metrics, **self._service_metrics()},
             api_port=self.api_port,
         )
+
+    async def send_directory_heartbeat(self) -> bool:
+        if not self.addr or self.role != P.ROLE_NODE:
+            return False
+        models = [{"name": m, "provider": s.backend} for s in self.local_services.values() for m in s.models()]
+        models = [dict(t) for t in {tuple(sorted(m.items())) for m in models}]
+        models_tps = {}
+        for s in self.local_services.values():
+            tps = s.get_metadata().get("tokens_per_sec")
+            if tps:
+                for m in s.models():
+                    models_tps[m] = tps
+        metrics = {**self._local_metrics, **self._service_metrics(), "models_tps": models_tps, "peers": len(self.peers)}
+        return await self.directory.heartbeat(self.addr, models, metrics, self.api_port)
 
     def _service_metrics(self) -> Dict[str, Any]:
         tps: List[float] = [float(t) for s in self.local_services.values() if (t := s.get_metadata().get("tokens_per_sec"))]

@@ -27,11 +27,18 @@ def _bootstrap(settings_overrides: dict):
     return settings
 
 
-def _serve(backend: str, model: str, host, port, public_host, region, api_port, bootstrap, price) -> None:
+def _serve(backend: str, model: str, host, port, public_host, region, api_port, bootstrap, price, name=None) -> None:
     from .p2p_runtime import run_p2p_node
 
     settings = _bootstrap(
-        dict(host=host, port=port, announce_host=public_host, region=region, bootstrap=[bootstrap] if bootstrap else None)
+        dict(
+            host=host,
+            port=port,
+            announce_host=public_host,
+            region=region,
+            bootstrap=[bootstrap] if bootstrap else None,
+            node_name=name,
+        )
     )
     try:
         asyncio.run(
@@ -60,6 +67,7 @@ def serve_options(default_model: str):
             ),
             click.option("--bootstrap", default=None, help="Bootstrap peer (ws:// URL or join link) [env BEE2BEE_BOOTSTRAP]"),
             click.option("--price", default=0.0, type=float, show_default=True, help="Advertised price per token"),
+            click.option("--name", default=None, help="Display name in the directory [env BEE2BEE_NODE_NAME, default hostname]"),
         ]
         for option in reversed(options):
             fn = option(fn)
@@ -82,33 +90,33 @@ def cli():
 
 @cli.command("serve-ollama")
 @serve_options("llama3")
-def serve_ollama(model, host, port, public_host, region, api_port, bootstrap, price):
+def serve_ollama(model, host, port, public_host, region, api_port, bootstrap, price, name):
     """Serve a local Ollama model (set OLLAMA_HOST for a remote Ollama)."""
-    _serve("ollama", model, host, port, public_host, region, _api_port(api_port), bootstrap, price)
+    _serve("ollama", model, host, port, public_host, region, _api_port(api_port), bootstrap, price, name)
 
 
 @cli.command("serve-hf")
 @serve_options("distilgpt2")
-def serve_hf(model, host, port, public_host, region, api_port, bootstrap, price):
+def serve_hf(model, host, port, public_host, region, api_port, bootstrap, price, name):
     """Serve a Hugging Face transformers model locally (needs bee2bee[hf,torch])."""
-    _serve("hf", model, host, port, public_host, region, _api_port(api_port), bootstrap, price)
+    _serve("hf", model, host, port, public_host, region, _api_port(api_port), bootstrap, price, name)
 
 
 @cli.command("serve-hf-remote")
 @serve_options("HuggingFaceH4/zephyr-7b-beta")
 @click.option("--token", default=None, envvar="HF_TOKEN", help="Hugging Face token (prefer the HF_TOKEN env var)")
-def serve_hf_remote(model, host, port, public_host, region, api_port, bootstrap, price, token):
+def serve_hf_remote(model, host, port, public_host, region, api_port, bootstrap, price, name, token):
     """Serve through the Hugging Face Inference API."""
     if token:
         os.environ["HF_TOKEN"] = token
-    _serve("hf_remote", model, host, port, public_host, region, _api_port(api_port), bootstrap, price)
+    _serve("hf_remote", model, host, port, public_host, region, _api_port(api_port), bootstrap, price, name)
 
 
 @cli.command("serve-echo")
 @serve_options("echo")
-def serve_echo(model, host, port, public_host, region, api_port, bootstrap, price):
+def serve_echo(model, host, port, public_host, region, api_port, bootstrap, price, name):
     """Serve a test backend that echoes the prompt (no model needed)."""
-    _serve("echo", model, host, port, public_host, region, _api_port(api_port), bootstrap, price)
+    _serve("echo", model, host, port, public_host, region, _api_port(api_port), bootstrap, price, name)
 
 
 @cli.command()

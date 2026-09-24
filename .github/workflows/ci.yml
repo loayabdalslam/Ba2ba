@@ -2,8 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: ["**"]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -25,6 +26,8 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
+      - name: Versions are consistent
+        run: scripts/check-versions.sh
       - run: pip install -e ".[dev]"
       - run: ruff check bee2bee tests
       - run: ruff format --check bee2bee tests

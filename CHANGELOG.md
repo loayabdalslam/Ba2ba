@@ -13,7 +13,10 @@ and the project uses [Semantic Versioning](https://semver.org/).
   region, speed and latency, uptime, statistics. Nodes announce themselves with signed heartbeats and
   are probed before being marked reachable.
 - Node options `--name` / `BEE2BEE_NODE_NAME`, `BEE2BEE_DIRECTORY_URL`.
-- `Desktop app` workflow: verify, build installers for Windows/macOS/Linux, release on `desktop-v*` tags.
+- `Desktop app` workflow: lint, type-check, test and build installers for Windows/macOS/Linux.
+- One version for every component (`scripts/check-versions.sh`) and a single `Release` workflow: a
+  `vX.Y.Z` tag publishes the Python package, desktop installers and Docker images in one GitHub release.
+- CI runs on every branch push.
 
 ### Fixed
 - Package metadata (`pyproject.toml`, `Cargo.toml`) and the README claimed an MIT license; they now

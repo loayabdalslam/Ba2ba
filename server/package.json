@@ -1,10 +1,12 @@
 {
   "name": "bee2bee-directory",
-  "version": "1.0.0",
+  "version": "4.1.0",
   "private": true,
   "description": "Central Bee2Bee directory: which nodes are online, their models, providers and performance. Runs on Vercel with Neon Postgres.",
   "type": "module",
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "vercel dev",
     "migrate": "tsx scripts/migrate.ts",

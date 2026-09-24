@@ -55,6 +55,7 @@ npm run tauri build               # installers in src-tauri/target/release/bundl
 
 ## Release
 
-Bump the version in `package.json` and `src-tauri/Cargo.toml`, commit, and push a tag `desktop-vX.Y.Z`.
-The `Desktop app` workflow verifies everything and publishes installers for Windows, macOS (Intel and
-Apple Silicon) and Linux to a GitHub release.
+All components share one version. Bump it everywhere (`scripts/check-versions.sh` lists the files), add a
+`CHANGELOG.md` section, commit, and push a tag `vX.Y.Z`.
+The `Release` workflow builds installers for Windows, macOS (Intel and Apple Silicon) and Linux and
+attaches them to the GitHub release together with the Python package and Docker images.

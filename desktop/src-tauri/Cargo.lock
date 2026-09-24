@@ -239,7 +239,7 @@ checksum = "2af50177e190e07a26ab74f8b1efbfe2ef87da2116221318cb1c2e82baf7de06"
 
 [[package]]
 name = "bee2bee-core"
-version = "0.1.0"
+version = "4.1.0"
 dependencies = [
  "base64 0.22.1",
  "ed25519-dalek",
@@ -262,7 +262,7 @@ dependencies = [
 
 [[package]]
 name = "bee2bee-desktop"
-version = "0.1.0"
+version = "4.1.0"
 dependencies = [
  "bee2bee-core",
  "serde",

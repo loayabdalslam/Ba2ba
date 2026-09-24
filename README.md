@@ -79,7 +79,7 @@ Captured from the real desktop app on Linux, connected to a directory server and
 
 ### 1️⃣ Use the network: install the desktop app
 
-Download the installer for your platform from the **[Releases](../../releases)** page (tags `desktop-v*`):
+Download the installer for your platform from the **[Releases](../../releases)** page:
 
 | Platform | Package |
 |---|---|
@@ -335,7 +335,7 @@ Report vulnerabilities privately: see **[SECURITY.md](SECURITY.md)**.
 | Nodes | Any machine with a GPU, or Docker | `docker build -t bee2bee-node .` · `bee2bee serve-*` |
 | Gateway | Long-running container (Fly.io, Railway, VM) | `docker build -f gateway/Dockerfile -t bee2bee-gateway .` · [`deploy/fly.gateway.toml`](deploy/fly.gateway.toml) |
 | TLS | Caddy reverse proxy | [`deploy/Caddyfile`](deploy/Caddyfile) |
-| Desktop releases | GitHub Actions | Push a tag `desktop-vX.Y.Z` |
+| Releases (everything) | GitHub Actions | Bump versions, push a tag `vX.Y.Z` |
 
 Step by step: **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)** · Operations and incidents: **[docs/RUNBOOK.md](docs/RUNBOOK.md)**
 
@@ -379,8 +379,8 @@ PGHOST=localhost PGUSER=postgres supabase/tests/run.sh
 | Workflow | Runs |
 |---|---|
 | [`ci.yml`](.github/workflows/ci.yml) | Python on 3.10–3.13, RLS on Postgres, directory server, gateway, Docker builds, `pip-audit`, `npm audit`, gitleaks |
-| [`desktop.yml`](.github/workflows/desktop.yml) | Desktop lint, types and tests, `cargo` fmt/clippy/test, installers for Windows/macOS/Linux, GitHub release on `desktop-v*` tags |
-| [`release.yml`](.github/workflows/release.yml) | On `v*` tags: PyPI (trusted publishing), Docker images to GHCR, GitHub release |
+| [`desktop.yml`](.github/workflows/desktop.yml) | Desktop lint, types and tests, `cargo` fmt/clippy/test, installers for Windows/macOS/Linux as artifacts |
+| [`release.yml`](.github/workflows/release.yml) | On `vX.Y.Z` tags: one GitHub release with the Python wheel and sdist, desktop installers for every platform, and Docker images on GHCR (PyPI optional) |
 
 ### 📈 Measured performance
 

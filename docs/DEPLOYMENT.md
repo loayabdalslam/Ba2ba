@@ -68,12 +68,18 @@ Keep the node's HTTP API (4002) private unless you need it; it is protected by a
 
 ## Releases
 
-Desktop: bump `version` in `desktop/package.json` and `desktop/src-tauri/Cargo.toml`, then push a tag
-`desktop-vX.Y.Z`. `.github/workflows/desktop.yml` verifies the app (lint, types, tests, clippy, Rust
-interop tests), builds installers for Linux (.deb, .AppImage, .rpm), Windows (.msi, .exe) and macOS
-(.dmg, Intel and Apple Silicon) and publishes them as a GitHub release. Pull requests get the same
-builds as downloadable artifacts. Configure the `APPLE_*` secrets to sign and notarize macOS builds.
+All components share one version (`scripts/check-versions.sh` checks `bee2bee/_version.py`,
+`desktop/package.json`, the two desktop `Cargo.toml` files, `gateway/package.json` and
+`server/package.json`). To release:
 
-Python package and images: tag `vX.Y.Z` (matching `bee2bee/_version.py`) to publish the package to PyPI (trusted publishing: add the
-repository as a trusted publisher on PyPI and create a `pypi` environment), push Docker images to GHCR
-and create a GitHub release from `CHANGELOG.md`.
+1. Bump the version everywhere and add a `## [X.Y.Z]` section to `CHANGELOG.md`.
+2. Commit and push a tag `vX.Y.Z`.
+3. `.github/workflows/release.yml` creates a draft release, attaches the Python wheel and sdist,
+   builds desktop installers for Linux (.deb, .rpm, .AppImage), Windows (.msi, .exe) and macOS
+   (.dmg, Apple Silicon and Intel), pushes `node` and `gateway` images to GHCR, then publishes the release.
+
+Optional: set the repository variable `PUBLISH_PYPI=true` (and add the repo as a trusted publisher on
+PyPI with an environment named `pypi`) to also publish to PyPI; set `DIRECTORY_URL` so desktop builds
+default to your directory; add the `APPLE_*` secrets to sign and notarize macOS builds.
+
+

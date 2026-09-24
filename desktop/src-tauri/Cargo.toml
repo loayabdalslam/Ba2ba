@@ -1,6 +1,6 @@
 [package]
 name = "bee2bee-desktop"
-version = "0.1.0"
+version = "4.1.0"
 description = "Bee2Bee desktop: chat with any node, explore the mesh, deploy nodes and models"
 edition = "2021"
 license-file = "../../LICENSE"

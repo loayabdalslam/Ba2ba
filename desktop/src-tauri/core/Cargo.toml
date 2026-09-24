@@ -1,6 +1,6 @@
 [package]
 name = "bee2bee-core"
-version = "0.1.0"
+version = "4.1.0"
 edition = "2021"
 description = "Bee2Bee desktop core: identity, P2P client, Ollama and local node management"
 license-file = "../../../LICENSE"

@@ -3,7 +3,7 @@ name = "bee2bee-desktop"
 version = "0.1.0"
 description = "Bee2Bee desktop: chat with any node, explore the mesh, deploy nodes and models"
 edition = "2021"
-license = "MIT"
+license-file = "../../LICENSE"
 
 [lib]
 name = "bee2bee_desktop_lib"

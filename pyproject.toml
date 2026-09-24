@@ -8,7 +8,7 @@ dynamic = ["version"]
 description = "Decentralized peer-to-peer network for AI model hosting and inference"
 authors = [{ name = "ConnectIT Team", email = "loaiabdalslam@gmail.com" }]
 readme = "README.md"
-license = "MIT"
+license = { file = "LICENSE" }
 requires-python = ">=3.10"
 keywords = ["p2p", "ai", "llm", "inference", "distributed", "ollama", "transformers"]
 classifiers = [

@@ -15,6 +15,10 @@ and the project uses [Semantic Versioning](https://semver.org/).
 - Node options `--name` / `BEE2BEE_NODE_NAME`, `BEE2BEE_DIRECTORY_URL`.
 - `Desktop app` workflow: verify, build installers for Windows/macOS/Linux, release on `desktop-v*` tags.
 
+### Fixed
+- Package metadata (`pyproject.toml`, `Cargo.toml`) and the README claimed an MIT license; they now
+  point to the actual `LICENSE` file (ConnectIT custom license, non-commercial).
+
 ### Removed
 - The React web app (`app/`), replaced by the desktop app. The gateway image no longer bundles a UI.
 

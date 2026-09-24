@@ -6,6 +6,7 @@ bee2bee/__main__.py
 bee2bee/_version.py
 bee2bee/api.py
 bee2bee/config.py
+bee2bee/directory.py
 bee2bee/hf.py
 bee2bee/identity.py
 bee2bee/metrics.py
@@ -28,7 +29,10 @@ bee2bee.egg-info/entry_points.txt
 bee2bee.egg-info/requires.txt
 bee2bee.egg-info/top_level.txt
 tests/test_api.py
-tests/test_hf_optional.py
-tests/test_nat_optional.py
-tests/test_p2p.py
-tests/test_utils.py
+tests/test_identity.py
+tests/test_mesh.py
+tests/test_misc.py
+tests/test_netutil.py
+tests/test_protocol.py
+tests/test_registry.py
+tests/test_services.py

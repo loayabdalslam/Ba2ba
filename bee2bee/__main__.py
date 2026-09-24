@@ -1,126 +1,207 @@
-import click
+"""Bee2Bee command line interface."""
+
+from __future__ import annotations
+
 import asyncio
 import os
-from dotenv import load_dotenv
-
-# Load .env file if it exists
-load_dotenv()
-
-from rich.console import Console
-from loguru import logger
 import sys
+from typing import Optional
 
-# Configure Loguru
-logger.remove()
-logger.add(sys.stderr, level=os.getenv("LOG_LEVEL", "INFO"))
-logger.add("bee2bee.log", rotation="10 MB", level="DEBUG")
+import click
+from rich.console import Console
 
-console = Console()
-
-from .hf import has_transformers, has_datasets, load_model_and_tokenizer, export_torchscript, export_onnx
-from .p2p import generate_join_link, parse_join_link
-from .p2p_runtime import run_p2p_node, P2PNode
-from .nat import auto_port_forward, get_public_ip
+from ._version import __version__
+from .settings import load_settings
 
 console = Console()
 
 
-from .config import get_bootstrap_url, set_bootstrap_url, load_config
+def _bootstrap(settings_overrides: dict):
+    from dotenv import load_dotenv
+
+    load_dotenv()
+    from . import observability
+
+    settings = load_settings(**settings_overrides)
+    observability.setup(settings)
+    return settings
+
+
+def _serve(backend: str, model: str, host, port, public_host, region, api_port, bootstrap, price) -> None:
+    from .p2p_runtime import run_p2p_node
+
+    settings = _bootstrap(
+        dict(host=host, port=port, announce_host=public_host, region=region, bootstrap=[bootstrap] if bootstrap else None)
+    )
+    try:
+        asyncio.run(
+            run_p2p_node(
+                model_name=model,
+                backend=backend,
+                api_port=api_port or None,
+                price_per_token=price,
+                settings=settings,
+            )
+        )
+    except KeyboardInterrupt:
+        pass
+
+
+def serve_options(default_model: str):
+    def decorator(fn):
+        options = [
+            click.option("--model", default=default_model, show_default=True, help="Model name"),
+            click.option("--host", default=None, help="P2P bind host [env BEE2BEE_HOST, default 0.0.0.0]"),
+            click.option("--port", default=None, type=int, help="P2P port [env BEE2BEE_PORT, default 4003]"),
+            click.option("--public-host", default=None, help="Public host/IP to announce [env BEE2BEE_ANNOUNCE_HOST]"),
+            click.option("--region", default=None, help="Region label [env BEE2BEE_REGION]"),
+            click.option(
+                "--api-port", default=None, type=int, help="HTTP API port, 0 to disable [env BEE2BEE_API_PORT, default 4002]"
+            ),
+            click.option("--bootstrap", default=None, help="Bootstrap peer (ws:// URL or join link) [env BEE2BEE_BOOTSTRAP]"),
+            click.option("--price", default=0.0, type=float, show_default=True, help="Advertised price per token"),
+        ]
+        for option in reversed(options):
+            fn = option(fn)
+        return fn
+
+    return decorator
+
+
+def _api_port(value: Optional[int]) -> int:
+    if value is not None:
+        return value
+    return int(os.getenv("BEE2BEE_API_PORT", "4002"))
+
 
 @click.group()
+@click.version_option(__version__, prog_name="bee2bee")
 def cli():
-    """Bee2Bee: Decentralized Neural Mesh Orchestration."""
-    pass
+    """Bee2Bee: decentralized peer-to-peer AI inference mesh."""
+
+
+@cli.command("serve-ollama")
+@serve_options("llama3")
+def serve_ollama(model, host, port, public_host, region, api_port, bootstrap, price):
+    """Serve a local Ollama model (set OLLAMA_HOST for a remote Ollama)."""
+    _serve("ollama", model, host, port, public_host, region, _api_port(api_port), bootstrap, price)
+
+
+@cli.command("serve-hf")
+@serve_options("distilgpt2")
+def serve_hf(model, host, port, public_host, region, api_port, bootstrap, price):
+    """Serve a Hugging Face transformers model locally (needs bee2bee[hf,torch])."""
+    _serve("hf", model, host, port, public_host, region, _api_port(api_port), bootstrap, price)
+
+
+@cli.command("serve-hf-remote")
+@serve_options("HuggingFaceH4/zephyr-7b-beta")
+@click.option("--token", default=None, envvar="HF_TOKEN", help="Hugging Face token (prefer the HF_TOKEN env var)")
+def serve_hf_remote(model, host, port, public_host, region, api_port, bootstrap, price, token):
+    """Serve through the Hugging Face Inference API."""
+    if token:
+        os.environ["HF_TOKEN"] = token
+    _serve("hf_remote", model, host, port, public_host, region, _api_port(api_port), bootstrap, price)
+
+
+@cli.command("serve-echo")
+@serve_options("echo")
+def serve_echo(model, host, port, public_host, region, api_port, bootstrap, price):
+    """Serve a test backend that echoes the prompt (no model needed)."""
+    _serve("echo", model, host, port, public_host, region, _api_port(api_port), bootstrap, price)
+
 
 @cli.command()
-@click.option('--model', default='llama3', help='Ollama model name')
-@click.option('--host', default='0.0.0.0', help='Bind host')
-@click.option('--port', default=0, type=int, help='Bind port')
-@click.option('--public-host', default=None, help='Public IP/Hostname')
-@click.option('--region', default='Auto', help='Region name')
-@click.option('--api-port', default=8000, type=int, help='FastAPI port for local access')
-def serve_ollama(model, host, port, public_host, region, api_port):
-    """Serve a local Ollama model with P2P connectivity."""
-    bootstrap = get_bootstrap_url()
-    asyncio.run(run_p2p_node(
-        host=host, port=port, bootstrap_link=bootstrap,
-        model_name=model, backend="ollama", announce_host=public_host,
-        region=region, api_port=api_port
-    ))
+@click.option("--host", default=None)
+@click.option("--port", default=None, type=int)
+@click.option("--api-port", default=None, type=int)
+@click.option("--bootstrap", default=None)
+def relay(host, port, api_port, bootstrap):
+    """Run a node without a model: routes requests to other peers."""
+    from .p2p_runtime import run_p2p_node
+
+    settings = _bootstrap(dict(host=host, port=port, bootstrap=[bootstrap] if bootstrap else None))
+    try:
+        asyncio.run(run_p2p_node(api_port=_api_port(api_port) or None, settings=settings))
+    except KeyboardInterrupt:
+        pass
+
 
 @cli.command()
-@click.option('--model', default='distilgpt2', help='HF model name')
-@click.option('--port', default=0, type=int, help='Bind port')
-@click.option('--region', default='Auto', help='Region name')
-@click.option('--api-port', default=8000, type=int, help='FastAPI port')
-def serve_hf(model, port, region, api_port):
-    """Serve a local Hugging Face model with built-in FastAPI."""
-    bootstrap = get_bootstrap_url()
-    asyncio.run(run_p2p_node(
-        port=port, bootstrap_link=bootstrap,
-        model_name=model, backend="hf", region=region, api_port=api_port
-    ))
+def identity():
+    """Show this node's peer id and public key."""
+    from .identity import Identity
+
+    ident = Identity.load_or_create()
+    console.print(f"peer_id: {ident.peer_id}\npubkey:  {ident.pubkey}")
+
+
+@cli.command("api-key")
+@click.option("--rotate", is_flag=True, help="Generate a new key (the old one stops working)")
+def api_key(rotate):
+    """Show (or rotate) the local HTTP API key."""
+    from .api import API_KEY_FILE, load_or_create_api_key
+    from .utils import bee2bee_home
+
+    if rotate:
+        (bee2bee_home() / API_KEY_FILE).unlink(missing_ok=True)
+    settings = _bootstrap({})
+    if settings.api_key:
+        console.print("[yellow]BEE2BEE_API_KEY is set in the environment; that key is used.[/yellow]")
+    console.print(load_or_create_api_key(settings))
+
 
 @cli.command()
-@click.option('--model', default='meta-llama/Llama-2-7b-hf', help='HF model name')
-@click.option('--token', required=True, help='HF API Token')
-@click.option('--region', default='Cloud', help='Region name')
-@click.option('--api-port', default=8000, type=int, help='FastAPI port')
-def serve_hf_remote(model, token, region, api_port):
-    """Serve via HF Inference API with a local FastAPI proxy."""
-    os.environ["HUGGING_FACE_HUB_TOKEN"] = token
-    bootstrap = get_bootstrap_url()
-    asyncio.run(run_p2p_node(
-        bootstrap_link=bootstrap, model_name=model,
-        backend="hf_remote", region=region, api_port=api_port
-    ))
+@click.argument("key", type=click.Choice(["bootstrap_url"]))
+@click.argument("value")
+def config(key, value):
+    """Persist a config value, e.g. `bee2bee config bootstrap_url wss://host:4003`."""
+    from .config import load_config, save_config
+    from .netutil import AddressError, validate_peer_addr
+
+    try:
+        validate_peer_addr(value, resolve=False)
+    except AddressError as e:
+        raise click.BadParameter(str(e))
+    cfg = load_config()
+    cfg[key] = value
+    save_config(cfg)
+    console.print(f"[green]Saved {key} = {value}[/green]")
+
 
 @cli.command()
-@click.option('--node-url', default=None, help='Specific Node URL to register')
-@click.option('--network', default='connectit', help='Network name')
-@click.option('--region', prompt="Node Region", default='US-West')
-@click.option('--test/--no-test', default=True, help='Run handshake test')
-def register(node_url, network, region, test):
-    """Register a node manually or via handshake test."""
-    async def _reg():
-        console.print(f"\n[bold blue]🐝 Bee2Bee Node Registration[/bold blue]")
-        
-        target_addr = node_url
-        peer_id = f"ext-{os.urandom(4).hex()}"
-        
-        if not target_addr:
-            node = P2PNode(port=0)
-            await node.start()
-            target_addr = node.addr
-            peer_id = node.peer_id
-        
-        console.print(f"🌍 Target Region: {region}")
-        console.print(f"🔗 Node Address: {target_addr}")
-        
-        if test:
-             console.print("\n[yellow]🧪 Running Handshake Test...[/yellow]")
-             # If it's a URL, we should ideally ping it, but for now we simulate/verify
-             await asyncio.sleep(1.5)
-             console.print("[green]✅ Handshake Successful. Node is responsive and verified.[/green]")
-        
-        from .registry import RegistryClient
-        reg = RegistryClient()
-        if reg.enabled:
-            await reg.sync_node(
-                peer_id=peer_id,
-                address=target_addr,
-                models=["manual-entry" if node_url else "system-test"],
-                tag=f"cli-{network}",
-                region=region
-            )
-            console.print(f"\n[bold green]🚀 Node Registered Successfully![/bold green]")
-        else:
-            console.print(f"\n[red]❌ Registry unavailable. Check .env credits.[/red]")
-        
-        if not node_url:
-            await node.stop()
-        
-    asyncio.run(_reg())
+def register():
+    """Register this node with the registry once (normally automatic)."""
+    from .identity import Identity
+    from .registry import RegistryClient
+
+    settings = _bootstrap({})
+    reg = RegistryClient(settings, Identity.load_or_create())
+    if not reg.enabled:
+        console.print("[red]No registry configured. Set BEE2BEE_REGISTRY_URL.[/red]")
+        sys.exit(1)
+    if not settings.announce_host:
+        console.print("[red]Set BEE2BEE_ANNOUNCE_HOST so the registry knows how to reach this node.[/red]")
+        sys.exit(1)
+    scheme = "wss" if settings.tls_enabled else "ws"
+    addr = f"{scheme}://{settings.announce_host}:{settings.announce_port or settings.port}"
+
+    async def _go() -> bool:
+        try:
+            return await reg.sync_node(addr=addr, models=[], region=settings.region, api_port=settings.api_port)
+        finally:
+            await reg.close()
+
+    if asyncio.run(_go()):
+        console.print(f"[green]Registered {reg.identity.peer_id} at {addr}[/green]")
+    else:
+        console.print("[red]Registration failed (see log above).[/red]")
+        sys.exit(1)
+
+
+def main() -> None:
+    cli()
+
 
 if __name__ == "__main__":
-    cli()
+    main()

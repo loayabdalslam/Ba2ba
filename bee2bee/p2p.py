@@ -1,8 +1,9 @@
 from __future__ import annotations
-from typing import Dict, Any, List, Tuple
-from urllib.parse import urlencode, urlparse, parse_qs
+
 import base64
 import hashlib
+from typing import Any, Dict, List
+from urllib.parse import parse_qs, urlparse
 
 
 def generate_join_link(network: str, model: str, hash_hex: str, bootstrap: List[str]) -> str:
@@ -23,6 +24,7 @@ def parse_join_link(link: str) -> Dict[str, Any]:
     network = qs.get("network", [None])[0]
     model = qs.get("model", [None])[0]
     h = qs.get("hash", [None])[0]
+
     # Handle base64 with stripped padding
     def decode_b64(s):
         if not s:
@@ -30,8 +32,9 @@ def parse_join_link(link: str) -> Dict[str, Any]:
         # Add padding back if needed
         missing_padding = len(s) % 4
         if missing_padding:
-            s += '=' * (4 - missing_padding)
+            s += "=" * (4 - missing_padding)
         return base64.urlsafe_b64decode(s).decode()
+
     boots = [decode_b64(b) for b in qs.get("bootstrap", [])]
     return {"network": network, "model": model, "hash": h, "bootstrap": boots}
 
@@ -50,5 +53,3 @@ def bitfield_from_pieces(total_pieces: int, have_indices: List[int]) -> List[int
         if 0 <= i < total_pieces:
             field[i] = 1
     return field
-
-

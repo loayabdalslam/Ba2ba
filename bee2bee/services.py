@@ -1,308 +1,320 @@
+"""Inference backends.
 
-from typing import Any, Dict, List, Optional
+Every service implements one async streaming primitive, ``stream()``, which
+yields text deltas (``str``) followed by exactly one final ``Usage`` object.
+``generate()`` is derived from it, so buffered and streamed responses always
+agree. Blocking work (model loading, torch generation) runs in threads so it
+never stalls the event loop that also serves pings and other peers.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import threading
 import time
-import os
-from rich.console import Console
+from typing import Any, AsyncGenerator, Dict, List, Optional, Union
+
+import httpx
 from loguru import logger
 
-console = Console()
+from .protocol import GenerationRequest, Usage, models_match
+
 
 class ServiceError(Exception):
     pass
 
+
+StreamItem = Union[str, Usage]
+
+
 class BaseService:
-    def __init__(self, name: str):
+    backend = "base"
+
+    def __init__(self, name: str, model_name: str, price_per_token: float = 0.0):
         self.name = name
-
-    def get_metadata(self) -> Dict[str, Any]:
-        return {}
-
-    def execute(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        raise NotImplementedError
-
-    def execute_stream(self, params: Dict[str, Any]):
-        """Returns a generator for streaming responses."""
-        raise NotImplementedError
-
-class HFService(BaseService):
-    def __init__(self, model_name: str, price_per_token: float, max_new_tokens: int = 2048):
-        super().__init__("hf")
         self.model_name = model_name
         self.price_per_token = price_per_token
-        self.max_new_tokens = max_new_tokens
-        self.model = None
-        self.tokenizer = None
-        self.device = None
-        # We do NOT load immediately here to avoid blocking construction
-        # The caller should call load_async
+        self._tps_ewma: Optional[float] = None
 
-    def load_sync(self):
-        """Blocking load."""
-        self._load_model()
+    async def load(self) -> None:
+        """Prepare the backend (download weights, check connectivity...)."""
 
-    def _load_model(self):
-        console.log(f"[yellow]🤖 Loading model '{self.model_name}'... (This may take a while)[/yellow]")
-        try:
-            from .hf import load_model_and_tokenizer
-            self.model, self.tokenizer, self.device = load_model_and_tokenizer(self.model_name)
-            console.log(f"[green]✓ Model '{self.model_name}' loaded successfully[/green]")
-        except ImportError:
-            raise ServiceError("transformers not installed")
-        except Exception as e:
-            raise ServiceError(f"Failed to load model: {e}")
+    async def close(self) -> None:
+        """Release resources."""
+
+    def models(self) -> List[str]:
+        return [self.model_name]
+
+    def serves(self, model: Optional[str]) -> bool:
+        return any(models_match(model, m) for m in self.models())
 
     def get_metadata(self) -> Dict[str, Any]:
-        return {
-            "models": [self.model_name],
+        meta: Dict[str, Any] = {
+            "models": self.models(),
             "price_per_token": self.price_per_token,
-            "max_new_tokens": self.max_new_tokens
+            "backend": self.backend,
+        }
+        if self._tps_ewma is not None:
+            meta["tokens_per_sec"] = round(self._tps_ewma, 2)
+        return meta
+
+    def stream(self, req: GenerationRequest) -> AsyncGenerator[StreamItem, None]:
+        raise NotImplementedError
+
+    def record_usage(self, usage: Usage) -> None:
+        tps = usage.tokens_per_sec
+        if tps > 0:
+            self._tps_ewma = tps if self._tps_ewma is None else 0.8 * self._tps_ewma + 0.2 * tps
+
+    async def generate(self, req: GenerationRequest) -> Dict[str, Any]:
+        parts: List[str] = []
+        usage = Usage()
+        async for item in self.stream(req):
+            if isinstance(item, Usage):
+                usage = item
+            else:
+                parts.append(item)
+        return {
+            "text": "".join(parts),
+            "usage": usage.to_dict(),
+            "backend": self.backend,
+            "cost": round(self.price_per_token * usage.completion_tokens, 8),
         }
 
-    def execute_stream(self, params: Dict[str, Any]):
-        if not self.model:
-            raise ServiceError("Model not loaded")
-        
-        prompt = params.get("prompt")
-        max_new = int(params.get("max_new_tokens", self.max_new_tokens))
-        temperature = float(params.get("temperature", 0.7))
-        
-        if not prompt:
-            raise ServiceError("Missing prompt")
 
-        from .hf import generate_text_stream
-        import json
-        
-        try:
-            for text_chunk in generate_text_stream(self.model, self.tokenizer, self.device, prompt, max_new, temperature=temperature):
-                yield json.dumps({"text": text_chunk}) + "\n"
-            
-            # Explicit End of Stream Signal - uses Python True for JSON true
-            yield json.dumps({"done": True}) + "\n"
-        except Exception as e:
-            logger.error(f"Stream generation failed: {e}")
-            yield json.dumps({"status": "error", "message": f"Stream error: {e}"}) + "\n"
+class EchoService(BaseService):
+    """Deterministic backend for tests, demos and load testing (no model)."""
 
-    def execute(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        if not self.model:
-            raise ServiceError("Model not loaded")
-        
-        prompt = params.get("prompt")
-        max_new = int(params.get("max_new_tokens", self.max_new_tokens))
-        temperature = float(params.get("temperature", 0.7))
-        
-        if not prompt:
-            raise ServiceError("Missing prompt")
+    backend = "echo"
 
-        try:
-            t0 = time.time()
-            from .hf import generate_text
-            text = generate_text(self.model, self.tokenizer, self.device, prompt, max_new, temperature=temperature)
-            
-            # Token accounting
-            in_tokens = len(self.tokenizer.encode(prompt))
-            out_tokens = len(self.tokenizer.encode(text))
-            new_tokens = max(0, out_tokens - in_tokens)
-            latency_ms = int((time.time() - t0) * 1000.0)
-            cost = self.price_per_token * new_tokens
-            
-            return {
-                "text": text,
-                "tokens": new_tokens,
-                "latency_ms": latency_ms,
-                "price_per_token": self.price_per_token,
-                "cost": cost
-            }
-        except Exception as e:
-            raise ServiceError(str(e))
+    def __init__(self, model_name: str = "echo", delay: float = 0.0):
+        super().__init__("echo", model_name)
+        self.delay = delay
+
+    async def stream(self, req: GenerationRequest) -> AsyncGenerator[StreamItem, None]:
+        t0 = time.monotonic()
+        prompt = req.prompt_text()
+        words = prompt.split()[: req.max_new_tokens]
+        for i, word in enumerate(words):
+            if self.delay:
+                await asyncio.sleep(self.delay)
+            yield word if i == 0 else " " + word
+        usage = Usage(len(prompt.split()), len(words), int((time.monotonic() - t0) * 1000))
+        self.record_usage(usage)
+        yield usage
+
 
 class OllamaService(BaseService):
-    def __init__(self, model_name: str, host: str = "http://localhost:11434"):
-        super().__init__("ollama")
-        self.model_name = model_name
-        self.host = host
-        self.price_per_token = 0.0 # Typically free if local
-        
-    def load_sync(self):
-        # Check connection
-        import requests
+    backend = "ollama"
+
+    def __init__(self, model_name: str, host: str = "http://localhost:11434", price_per_token: float = 0.0):
+        super().__init__("ollama", model_name, price_per_token)
+        self.host = host.rstrip("/")
+        self.actual_model = model_name
+        self._client = httpx.AsyncClient(base_url=self.host, timeout=httpx.Timeout(10.0, read=300.0))
+
+    async def load(self) -> None:
         try:
-            # Add timeout to prevent hanging
-            res = requests.get(f"{self.host}/api/tags", timeout=5)
-            if res.status_code != 200:
-                raise ServiceError(f"Ollama reachable but returned {res.status_code}")
-            
-            # Check if model exists
-            models = [m["name"] for m in res.json().get("models", [])]
-            self.actual_model = self.model_name
-            # Simple substring check because ollama models have tags like 'llama3:latest'
-            found = False
-            for m in models:
-                if self.model_name == m or self.model_name in m or m in self.model_name:
-                    self.actual_model = m
-                    found = True
-                    break
-            
-            if not found:
-                 # Try pull? For now just warn or error.
-                 console.log(f"[yellow]⚠️ Model '{self.model_name}' not found in Ollama '{self.host}'.[/yellow]")
-                 console.log(f"[dim]Available: {models}[/dim]")
-                 # Fallback to first model if list is small? No, stay on model_name but warn
-            else:
-                 console.log(f"[green]✓ Ollama Model '{self.model_name}' ready (mapped to {self.actual_model})[/green]")
-                 
-        except Exception as e:
-            raise ServiceError(f"Ollama connection failed: {e}")
+            res = await self._client.get("/api/tags", timeout=5.0)
+            res.raise_for_status()
+        except httpx.HTTPError as e:
+            raise ServiceError(f"Ollama not reachable at {self.host}: {e}") from e
+        available = [m.get("name", "") for m in res.json().get("models", [])]
+        match = next((m for m in available if models_match(self.model_name, m)), None)
+        if match is None:
+            raise ServiceError(
+                f"Model '{self.model_name}' is not pulled in Ollama. "
+                f"Run 'ollama pull {self.model_name}'. Available: {', '.join(available) or 'none'}"
+            )
+        self.actual_model = match
+        logger.info(f"Ollama model ready: {self.actual_model}")
 
-    def get_metadata(self) -> Dict[str, Any]:
-        return {
-            "models": [self.model_name, getattr(self, 'actual_model', self.model_name)],
-            "price_per_token": self.price_per_token,
-            "backend": "ollama"
-        }
+    async def close(self) -> None:
+        await self._client.aclose()
 
-    def execute(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        import requests
-        prompt = params.get("prompt")
-        max_new = int(params.get("max_new_tokens", 2048))
-        temperature = float(params.get("temperature", 0.7))
-        
-        if not prompt:
-            raise ServiceError("Missing prompt")
-            
+    def models(self) -> List[str]:
+        return sorted({self.model_name, self.actual_model})
+
+    async def stream(self, req: GenerationRequest) -> AsyncGenerator[StreamItem, None]:
+        t0 = time.monotonic()
+        options = {"num_predict": req.max_new_tokens, "temperature": req.temperature}
+        if req.messages is not None:
+            path, payload = (
+                "/api/chat",
+                {"model": self.actual_model, "messages": req.messages, "stream": True, "options": options},
+            )
+        else:
+            path, payload = (
+                "/api/generate",
+                {"model": self.actual_model, "prompt": req.prompt, "stream": True, "options": options},
+            )
+        prompt_tokens = completion_tokens = 0
         try:
-            t0 = time.time()
-            # Use actual_model for the real request to Ollama
-            target_model = getattr(self, 'actual_model', self.model_name)
-            # Non-streaming implementation for now
-            payload = {
-                "model": target_model,
-                "prompt": prompt,
-                "stream": False,
-                "options": {
-                    "num_predict": max_new,
-                    "temperature": temperature
-                }
-            }
-            res = requests.post(f"{self.host}/api/generate", json=payload, timeout=300) # Long timeout for gen
-            if res.status_code != 200:
-                raise ServiceError(f"Ollama Error: {res.text}")
-            
-            data = res.json()
-            text = data.get("response", "")
-            
-            # Stats
-            eval_count = data.get("eval_count", 0)
-            duration_ns = data.get("total_duration", 0)
-            latency_ms = duration_ns / 1_000_000 if duration_ns > 0 else (time.time() - t0) * 1000.0
-            
-            return {
-                "text": text,
-                "tokens": eval_count,
-                "latency_ms": latency_ms,
-                "price_per_token": self.price_per_token,
-                "cost": 0.0
-            }
-        except Exception as e:
-            raise ServiceError(f"Ollama Exec Error: {e}")
-
-    def execute_stream(self, params: Dict[str, Any]):
-        import requests
-        import json
-        prompt = params.get("prompt")
-        target_model = getattr(self, 'actual_model', self.model_name)
-        
-        payload = {
-            "model": target_model,
-            "prompt": prompt,
-            "stream": True,
-            "options": {
-                "num_predict": int(params.get("max_new_tokens", 2048)),
-                "temperature": float(params.get("temperature", 0.7))
-            }
-        }
-        
-        try:
-            res = requests.post(f"{self.host}/api/generate", json=payload, stream=True, timeout=300)
-            if res.status_code != 200:
-                yield json.dumps({"error": f"Ollama Error: {res.text}"})
-                return
-
-            for line in res.iter_lines():
-                if line:
-                    decoded = line.decode('utf-8')
-                    try:
-                        data = json.loads(decoded)
-                        # Yield the specific chunk of text
-                        chunk = data.get("response", "")
-                        if chunk:
-                            yield chunk
-                        
-                        if data.get("done"):
-                            break
-                    except:
+            async with self._client.stream("POST", path, json=payload) as res:
+                if res.status_code != 200:
+                    body = (await res.aread()).decode("utf-8", "replace")[:500]
+                    raise ServiceError(f"Ollama returned {res.status_code}: {body}")
+                async for line in res.aiter_lines():
+                    if not line:
                         continue
+                    try:
+                        data = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if data.get("error"):
+                        raise ServiceError(f"Ollama error: {data['error']}")
+                    text = data.get("response") if req.messages is None else (data.get("message") or {}).get("content")
+                    if text:
+                        yield text
+                    if data.get("done"):
+                        prompt_tokens = int(data.get("prompt_eval_count") or 0)
+                        completion_tokens = int(data.get("eval_count") or 0)
+                        break
+        except httpx.HTTPError as e:
+            raise ServiceError(f"Ollama request failed: {e}") from e
+        usage = Usage(prompt_tokens, completion_tokens, int((time.monotonic() - t0) * 1000))
+        self.record_usage(usage)
+        yield usage
+
+
+class HFService(BaseService):
+    """Local Hugging Face transformers model (CPU/GPU)."""
+
+    backend = "hf"
+
+    def __init__(self, model_name: str, price_per_token: float = 0.0):
+        super().__init__("hf", model_name, price_per_token)
+        self.model: Any = None
+        self.tokenizer: Any = None
+        self.device: Optional[str] = None
+        # One generation at a time per loaded model; torch is not re-entrant here.
+        self._gen_lock = asyncio.Lock()
+
+    async def load(self) -> None:
+        from .hf import has_transformers, load_model_and_tokenizer
+
+        if not has_transformers():
+            raise ServiceError("transformers is not installed. Run: pip install 'bee2bee[hf,torch]'")
+        try:
+            self.model, self.tokenizer, self.device = await asyncio.to_thread(load_model_and_tokenizer, self.model_name)
         except Exception as e:
-            yield json.dumps({"error": str(e)})
+            raise ServiceError(f"Failed to load model '{self.model_name}': {e}") from e
+
+    def _count(self, text: str) -> int:
+        try:
+            assert self.tokenizer is not None
+            return len(self.tokenizer.encode(text, add_special_tokens=False))
+        except Exception:
+            return max(1, len(text) // 4)
+
+    async def stream(self, req: GenerationRequest) -> AsyncGenerator[StreamItem, None]:
+        if self.model is None:
+            raise ServiceError("Model not loaded")
+        from .hf import start_generation_thread
+
+        loop = asyncio.get_running_loop()
+        queue: asyncio.Queue = asyncio.Queue()
+        stop = threading.Event()
+        sentinel = object()
+
+        def on_text(text: Any) -> None:
+            loop.call_soon_threadsafe(queue.put_nowait, text)
+
+        async with self._gen_lock:
+            t0 = time.monotonic()
+            prompt_tokens, worker = start_generation_thread(
+                self.model, self.tokenizer, self.device or "cpu", req, stop, on_text, sentinel
+            )
+            parts: List[str] = []
+            try:
+                while True:
+                    item = await queue.get()
+                    if item is sentinel:
+                        break
+                    if isinstance(item, BaseException):
+                        raise ServiceError(f"Generation failed: {item}")
+                    parts.append(item)
+                    yield item
+            finally:
+                stop.set()
+                await asyncio.to_thread(worker.join, 30)
+        usage = Usage(prompt_tokens, self._count("".join(parts)), int((time.monotonic() - t0) * 1000))
+        self.record_usage(usage)
+        yield usage
+
 
 class HFRemoteService(BaseService):
-    def __init__(self, model_name: str, token: Optional[str] = None, price_per_token: float = 0.005):
-        super().__init__("hf_remote")
-        self.model_name = model_name
-        self.token = token or os.getenv("HUGGING_FACE_HUB_TOKEN")
-        self.price_per_token = price_per_token
-        self.client = None
+    """Proxy to the Hugging Face serverless Inference API."""
 
-    def load_sync(self):
+    backend = "hf_remote"
+
+    def __init__(self, model_name: str, token: Optional[str] = None, price_per_token: float = 0.0):
+        super().__init__("hf_remote", model_name, price_per_token)
+        self.token = token
+        self.client: Any = None
+
+    async def load(self) -> None:
+        if not self.token:
+            raise ServiceError("A Hugging Face token is required. Set HF_TOKEN in the environment.")
         try:
-            from huggingface_hub import InferenceClient
-            self.client = InferenceClient(model=self.model_name, token=self.token)
-            logger.success(f"HF Remote Client initialized for model '{self.model_name}' (remote)")
-        except ImportError:
-            raise ServiceError("huggingface_hub not installed. Run 'pip install huggingface-hub'")
-        except Exception as e:
-            raise ServiceError(f"Failed to init HF Remote Client: {e}")
+            from huggingface_hub import AsyncInferenceClient
+        except ImportError as e:
+            raise ServiceError("huggingface_hub is not installed") from e
+        self.client = AsyncInferenceClient(model=self.model_name, token=self.token, timeout=300)
 
     def get_metadata(self) -> Dict[str, Any]:
-        return {
-            "models": [self.model_name],
-            "price_per_token": self.price_per_token,
-            "tag": "remote",
-            "backend": "hf_remote"
-        }
+        return {**super().get_metadata(), "tag": "remote"}
 
-    def execute(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        if not self.client:
+    async def stream(self, req: GenerationRequest) -> AsyncGenerator[StreamItem, None]:
+        if self.client is None:
             raise ServiceError("Remote client not initialized")
-        
-        prompt = params.get("prompt")
-        max_new = int(params.get("max_new_tokens", 32))
-        
-        if not prompt:
-            raise ServiceError("Missing prompt")
-
+        t0 = time.monotonic()
+        completion_tokens = 0
         try:
-            t0 = time.time()
-            # result = client.text_generation(...)
-            response = self.client.text_generation(
-                prompt,
-                max_new_tokens=max_new,
-                temperature=params.get("temperature", 0.7),
-                do_sample=params.get("do_sample", True)
-            )
-            
-            latency_ms = int((time.time() - t0) * 1000.0)
-            
-            # Rough estimation of tokens (char length / 4)
-            tokens = len(response) // 4
-            cost = self.price_per_token * tokens
-
-            return {
-                "text": response,
-                "tokens": tokens,
-                "latency_ms": latency_ms,
-                "price_per_token": self.price_per_token,
-                "cost": cost,
-                "backend": "hf_remote"
-            }
+            if req.messages is not None:
+                stream = await self.client.chat_completion(
+                    messages=req.messages,
+                    max_tokens=req.max_new_tokens,
+                    temperature=req.temperature or None,
+                    stream=True,
+                )
+                async for chunk in stream:
+                    delta = chunk.choices[0].delta.content if chunk.choices else None
+                    if delta:
+                        completion_tokens += 1
+                        yield delta
+            else:
+                stream = await self.client.text_generation(
+                    req.prompt or "",
+                    max_new_tokens=req.max_new_tokens,
+                    temperature=req.temperature or None,
+                    do_sample=req.temperature > 0,
+                    stream=True,
+                    details=True,
+                )
+                async for event in stream:
+                    token = getattr(event, "token", None)
+                    if token is not None and not getattr(token, "special", False) and token.text:
+                        completion_tokens += 1
+                        yield token.text
         except Exception as e:
-            raise ServiceError(f"HF Remote Execution Error: {e}")
+            raise ServiceError(f"Hugging Face Inference API error: {e}") from e
+        usage = Usage(0, completion_tokens, int((time.monotonic() - t0) * 1000))
+        self.record_usage(usage)
+        yield usage
+
+
+def create_service(backend: str, model: str, *, price_per_token: float = 0.0, settings=None) -> BaseService:
+    from .settings import get_settings
+
+    settings = settings or get_settings()
+    if backend == "hf":
+        return HFService(model, price_per_token)
+    if backend == "hf_remote":
+        return HFRemoteService(model, token=settings.hf_token, price_per_token=price_per_token)
+    if backend == "ollama":
+        return OllamaService(model, host=settings.ollama_host, price_per_token=price_per_token)
+    if backend == "echo":
+        return EchoService(model)
+    raise ServiceError(f"Unknown backend: {backend}")

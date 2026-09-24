@@ -1,27 +1,21 @@
+from __future__ import annotations
+
+import hashlib
 import json
 import os
 import platform
+import secrets
+import socket
 import time
 import uuid
-import hashlib
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 
 def bee2bee_home() -> Path:
     base = os.environ.get("BEE2BEE_HOME")
-    if base:
-        p = Path(base)
-    else:
-        p = Path.home() / ".bee2bee"
+    p = Path(base) if base else Path.home() / ".bee2bee"
     p.mkdir(parents=True, exist_ok=True)
-    return p
-
-
-def data_file(name: str) -> Path:
-    p = bee2bee_home() / name
-    if not p.parent.exists():
-        p.parent.mkdir(parents=True, exist_ok=True)
     return p
 
 
@@ -40,8 +34,20 @@ def save_json(path: Path, obj: Any) -> None:
     tmp.replace(path)
 
 
+def write_secret_file(path: Path, content: str) -> None:
+    """Write a file readable only by the current user."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        fh.write(content)
+
+
 def new_id(prefix: str) -> str:
-    return f"{prefix}-{uuid.uuid4().hex[:8]}"
+    return f"{prefix}-{uuid.uuid4().hex[:12]}"
+
+
+def new_secret(nbytes: int = 32) -> str:
+    return secrets.token_urlsafe(nbytes)
 
 
 def now_ms() -> int:
@@ -57,79 +63,62 @@ def sha256_hex(s: str) -> str:
 
 
 def hash_password(password: str, salt: str) -> str:
-    return sha256_hex(password + ":" + salt)
+    """Memory-hard password hash (scrypt). Salt must be unique per password."""
+    digest = hashlib.scrypt(password.encode("utf-8"), salt=salt.encode("utf-8"), n=2**14, r=8, p=1, dklen=32)
+    return digest.hex()
 
 
 def gen_salt() -> str:
-    return uuid.uuid4().hex
-
+    return secrets.token_hex(16)
 
 
 def get_lan_ip() -> str:
-    """Detect the local LAN IP address."""
-    import socket
+    """Detect the local LAN IP address (no packets are sent)."""
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
-        # doesn't even have to be reachable
-        s.connect(('10.255.255.255', 1))
-        IP = s.getsockname()[0]
+        s.connect(("10.255.255.255", 1))
+        return s.getsockname()[0]
     except Exception:
-        IP = '127.0.0.1'
+        return "127.0.0.1"
     finally:
         s.close()
-    return IP
 
 
-def get_public_ip() -> str | None:
-    """Detect the public IP address via external service."""
-    import urllib.request
+def is_colab() -> bool:
+    import sys
+
+    return "google.colab" in sys.modules
+
+
+def get_gpu_usage() -> Optional[float]:
+    """GPU utilisation percent via nvidia-smi, or None when unavailable."""
+    import shutil
+    import subprocess
+
+    if not shutil.which("nvidia-smi"):
+        return None
     try:
-        # standard public ip echo service
-        return urllib.request.urlopen('https://api.ipify.org').read().decode('utf8')
+        out = subprocess.check_output(
+            ["nvidia-smi", "--query-gpu=utilization.gpu", "--format=csv,noheader,nounits"],
+            stderr=subprocess.STDOUT,
+            timeout=2,
+        )
+        return float(out.decode("utf-8").strip().splitlines()[0])
     except Exception:
         return None
 
 
-
-def is_colab() -> bool:
-    """Check if running in Google Colab."""
-    import sys
-    return 'google.colab' in sys.modules
-
-
-
-
-def get_gpu_usage() -> float:
-    """Get GPU usage precent via nvidia-smi if available."""
-    import subprocess
-    import shutil
-    
-    if not shutil.which("nvidia-smi"):
-        return 0.0
-        
-    try:
-        # Get utilization.gpu (percent)
-        result = subprocess.check_output(
-            ["nvidia-smi", "--query-gpu=utilization.gpu", "--format=csv,noheader,nounits"], 
-            stderr=subprocess.STDOUT
-        )
-        return float(result.decode("utf-8").strip())
-    except Exception:
-        return 0.0
-
-def get_system_metrics() -> Dict[str, float]:
-    """Capture real-time system metrics (CPU, RAM, GPU) aligned with Dashboard keys."""
+def get_system_metrics() -> Dict[str, Any]:
+    """Real host metrics. Nothing here is simulated."""
+    metrics: Dict[str, Any] = {}
     try:
         import psutil
-        gpu_percent = get_gpu_usage()
-        cpu = psutil.cpu_percent(interval=None)
-        ram = psutil.virtual_memory().percent
-        
-        return {
-            "throughput": round(cpu * 0.85, 1), # Simulated T/s based on CPU load
-            "memory_percent": ram,
-            "gpu_percent": gpu_percent,
-            "trust_score": 0.98 + (gpu_percent * 0.0001) # Dynamic trust simulation
-        }
+
+        metrics["cpu_percent"] = psutil.cpu_percent(interval=None)
+        metrics["memory_percent"] = psutil.virtual_memory().percent
     except Exception:
-        return {"throughput": 0.0, "memory_percent": 0.0, "gpu_percent": 0.0, "trust_score": 1.0}
+        pass
+    gpu = get_gpu_usage()
+    if gpu is not None:
+        metrics["gpu_percent"] = gpu
+    return metrics

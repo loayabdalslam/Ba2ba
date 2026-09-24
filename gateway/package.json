@@ -1,0 +1,25 @@
+{
+  "name": "bee2bee-gateway",
+  "version": "4.0.0",
+  "private": true,
+  "description": "Bee2Bee gateway: authenticated bridge between web/API clients and the P2P mesh",
+  "type": "module",
+  "main": "src/server.js",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "test": "node --test --test-concurrency=1 test/*.test.js",
+    "lint": "eslint src test"
+  },
+  "dependencies": {
+    "dotenv": "^17.2.0",
+    "express": "^5.1.0",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.30.0",
+    "eslint": "^9.30.0",
+    "globals": "^16.3.0"
+  }
+}

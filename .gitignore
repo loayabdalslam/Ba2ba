@@ -55,4 +55,8 @@ Thumbs.db
 !tauri-app/**/*.tsx
 !tauri-app/**/lib/
 
-egg-info
+*.egg-info/
+node_modules/
+gateway/data/
+.env.*
+!.env.example

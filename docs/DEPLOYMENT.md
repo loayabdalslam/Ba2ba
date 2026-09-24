@@ -73,7 +73,8 @@ All components share one version (`scripts/check-versions.sh` checks `bee2bee/_v
 `server/package.json`). To release:
 
 1. Bump the version everywhere and add a `## [X.Y.Z]` section to `CHANGELOG.md`.
-2. Commit and push a tag `vX.Y.Z`.
+2. Commit and push a tag `vX.Y.Z` — or, without git, open **Actions → Release → Run workflow**,
+   pick the branch and enter `vX.Y.Z`; the workflow creates the tag on that branch itself.
 3. `.github/workflows/release.yml` creates a draft release, attaches the Python wheel and sdist,
    builds desktop installers for Linux (.deb, .rpm, .AppImage), Windows (.msi, .exe) and macOS
    (.dmg, Apple Silicon and Intel), pushes `node` and `gateway` images to GHCR, then publishes the release.

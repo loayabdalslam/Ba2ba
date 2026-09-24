@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Existing tag to (re)build, e.g. v4.1.0"
+        description: "Tag to build, e.g. v4.1.0 (created on the selected branch if it does not exist yet)"
         required: true
 
 permissions:
@@ -35,8 +35,17 @@ jobs:
       version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ env.TAG }}
+      - name: Create the tag if it does not exist yet (manual runs)
+        run: |
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null; then
+            git fetch --force origin "refs/tags/$TAG:refs/tags/$TAG"
+            git checkout --quiet "$TAG"
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git tag -a "$TAG" -m "Bee2Bee $TAG"
+            git push origin "refs/tags/$TAG"
+          fi
       - name: Check versions match the tag
         run: scripts/check-versions.sh "$TAG"
       - id: version

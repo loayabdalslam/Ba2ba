@@ -52,6 +52,9 @@ class Settings(BaseModel):
     port: int = Field(default=4003, ge=0, le=65535)
     announce_host: Optional[str] = None
     announce_port: Optional[int] = Field(default=None, ge=1, le=65535)
+    # Full public URL (e.g. wss://mesh.example.com) when TLS is terminated by a
+    # reverse proxy or tunnel. Overrides announce_host/announce_port.
+    announce_addr: Optional[str] = None
     bootstrap: List[str] = Field(default_factory=list)
     region: str = "Auto"
     upnp: bool = True
@@ -78,6 +81,9 @@ class Settings(BaseModel):
 
     # --- Mesh policy & limits --------------------------------------------
     allowed_peers: List[str] = Field(default_factory=list)
+    # Peers exempt from the per-peer rate limit, e.g. a gateway that carries
+    # many users' traffic over one connection. The concurrency cap still applies.
+    trusted_peers: List[str] = Field(default_factory=list)
     max_peers: int = Field(default=50, ge=1)
     target_peers: int = Field(default=8, ge=0)
     max_prompt_chars: int = Field(default=32_000, ge=1)
@@ -143,6 +149,7 @@ def load_settings(**overrides) -> Settings:
         port=_env_int("PORT", 4003),
         announce_host=_env("ANNOUNCE_HOST"),
         announce_port=_env_int("ANNOUNCE_PORT", 0) or None,
+        announce_addr=_env("ANNOUNCE_ADDR"),
         bootstrap=bootstrap,
         region=_env("REGION", "Auto"),
         upnp=_env_bool("UPNP", True),
@@ -159,6 +166,7 @@ def load_settings(**overrides) -> Settings:
         rate_limit_per_minute=_env_int("RATE_LIMIT_PER_MINUTE", 60),
         trust_proxy=_env_bool("TRUST_PROXY", False),
         allowed_peers=_env_list("ALLOWED_PEERS"),
+        trusted_peers=_env_list("TRUSTED_PEERS"),
         max_peers=_env_int("MAX_PEERS", 50),
         target_peers=_env_int("TARGET_PEERS", 8),
         max_prompt_chars=_env_int("MAX_PROMPT_CHARS", 32_000),

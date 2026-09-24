@@ -1,0 +1,28 @@
+# fly launch --config deploy/fly.gateway.toml --dockerfile gateway/Dockerfile
+app = "bee2bee-gateway"
+primary_region = "fra"
+
+[build]
+  dockerfile = "../gateway/Dockerfile"
+
+[env]
+  PORT = "3001"
+  TRUST_PROXY = "true"
+  LOG_LEVEL = "info"
+
+[http_service]
+  internal_port = 3001
+  force_https = true
+  auto_stop_machines = "off" # the gateway keeps WebSocket connections to nodes
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    grace_period = "20s"
+    interval = "30s"
+    method = "GET"
+    path = "/healthz"
+    timeout = "5s"
+
+[mounts]
+  source = "gateway_data"
+  destination = "/data"

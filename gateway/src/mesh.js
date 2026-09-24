@@ -348,7 +348,8 @@ export class Mesh extends EventEmitter {
         return;
       } catch (e) {
         lastError = e instanceof GenerationError ? e : new GenerationError('provider_error', e.message);
-        if (lastError.code !== 'cancelled' && lastError.code !== 'bad_request') this.statsFor(node.peerId).failures += 1;
+        // Capacity signals (busy, rate_limited) are not failures of the node.
+        if (!['cancelled', 'bad_request', 'busy', 'rate_limited'].includes(lastError.code)) this.statsFor(node.peerId).failures += 1;
         if (emitted || ['bad_request', 'cancelled'].includes(lastError.code) || signal?.aborted) throw lastError;
         log.warn('node failed, trying next', { peer_id: node.peerId, code: lastError.code });
       }

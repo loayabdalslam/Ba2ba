@@ -180,11 +180,11 @@ def register():
     if not reg.enabled:
         console.print("[red]No registry configured. Set BEE2BEE_REGISTRY_URL.[/red]")
         sys.exit(1)
-    if not settings.announce_host:
-        console.print("[red]Set BEE2BEE_ANNOUNCE_HOST so the registry knows how to reach this node.[/red]")
+    if not (settings.announce_addr or settings.announce_host):
+        console.print("[red]Set BEE2BEE_ANNOUNCE_ADDR (or BEE2BEE_ANNOUNCE_HOST) so the registry can reach this node.[/red]")
         sys.exit(1)
     scheme = "wss" if settings.tls_enabled else "ws"
-    addr = f"{scheme}://{settings.announce_host}:{settings.announce_port or settings.port}"
+    addr = settings.announce_addr or f"{scheme}://{settings.announce_host}:{settings.announce_port or settings.port}"
 
     async def _go() -> bool:
         try:

@@ -1,77 +1,101 @@
-# 🐝 Bee2Bee: The Global Neural Consensus Mesh
+# 🐝 Bee2Bee
 
-[![PyPI version](https://badge.fury.io/py/bee2bee.svg)](https://badge.fury.io/py/bee2bee)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![PyPI version](https://badge.fury.io/py/bee2bee.svg)](https://pypi.org/project/bee2bee/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-**Bee2Bee** is a decentralized, peer-to-peer neural consensus engine and Web SaaS designed to make AI inference accessible, transparent, and resilient. Contribute compute to a global mesh or consume it via our unified Web UI.
+Bee2Bee is a peer-to-peer network for serving open AI models. Anyone can run a **node** that serves a
+model (Ollama, a local Hugging Face model, or the Hugging Face Inference API). Users reach the mesh
+through the **gateway**: a web chat at [coithub.org](https://coithub.org) and an OpenAI-compatible API.
 
----
+```
+browser / OpenAI SDK ──HTTPS──▶ gateway ──wss (signed handshake)──▶ node ──▶ Ollama / transformers / HF API
+                                   │                                  ▲
+                                   └── Supabase (registry, keys, usage) └── relays to other nodes
+```
 
-## 🌐 Connecting to CoitHub.org (The Global Dashboard)
+- **Verified identities**: every node and gateway has an Ed25519 key; its `peer_id` is derived from the
+  public key and proven on every connection (mutual challenge/response).
+- **Resilient routing**: provider ranking by reputation and latency, failover before the first token,
+  cancellation, hop-limited relays, reconnect with backoff.
+- **Secure defaults**: API keys required, rate limits, input limits, CORS allowlists, SSRF protection,
+  strict Supabase row-level security.
+- **Operable**: `/healthz`, `/readyz`, Prometheus `/metrics`, JSON logs, Docker images, CI/CD.
 
-Bee2Bee integrates directly with **[coithub.org](https://coithub.org)**.
-You do not need to build any front-end to join or use the global mesh.
+## Quick start
 
-1. **Host a Node**: Run one of the `bee2bee serve-*` commands (see below).
-2. **Access the Mesh**: Open [coithub.org](https://coithub.org) and click **Enter Global Mesh**.
-3. **Dynamic Registration**: You can actively register and expose your API node on CoitHub using the dynamic system registration deep-link format `?link=...` to sync your status with the platform in real-time. Ensure your FastAPI port (default `8000`) is accessible to traffic.
+### Run a node
 
----
-
-## 🛠️ CLI Commands & Examples
-
-Install the package utilizing pip:
 ```bash
 pip install bee2bee
+ollama pull llama3.2
+bee2bee serve-ollama --model llama3.2 --region egypt --public-host node.example.com
 ```
 
-*(Note: You can run commands via `python -m bee2bee` or `bee2bee` if the entrypoint is configured in your OS.)*
+Other backends:
 
-### 1. `serve-ollama`
-Serve a fast, local Ollama model directly to the global peer mesh. Includes a built-in FastAPI proxy sidecar for metric telemetry.
-
-**Full Usage:** `python -m bee2bee serve-ollama --model <model> --host <ip> --port <port> --public-host <ip> --region <region> --api-port <port>`
-
-**Example:**
-Launch a `gemma3:270m` node exposing telemetry on port 3333:
 ```bash
-python -m bee2bee serve-ollama --model gemma3:270m --api-port 3333 --region europe-central
+pip install "bee2bee[hf,torch]" && bee2bee serve-hf --model Qwen/Qwen2.5-0.5B-Instruct
+HF_TOKEN=hf_... bee2bee serve-hf-remote --model HuggingFaceH4/zephyr-7b-beta
+bee2bee serve-echo            # test backend, no model needed
+bee2bee relay                 # route requests without serving a model
 ```
 
-### 2. `serve-hf`
-Host open-source weights locally via CPU/GPU directly from the Hugging Face hub.
+The node listens for peers on **4003** (WebSocket) and serves an HTTP API on **4002**. To join the public
+mesh set `BEE2BEE_REGISTRY_URL=https://coithub.org` and a bootstrap peer (`BEE2BEE_BOOTSTRAP`).
 
-**Full Usage:** `python -m bee2bee serve-hf --model <model> --port <port> --region <region> --api-port <port>`
+### Use the local node API
 
-**Example:**
 ```bash
-python -m bee2bee serve-hf --model distilgpt2 --api-port 4000 --region US-East
+KEY=$(bee2bee api-key)
+curl -s localhost:4002/v1/chat/completions -H "Authorization: Bearer $KEY" \
+  -H 'content-type: application/json' \
+  -d '{"model":"llama3.2","messages":[{"role":"user","content":"Hello"}]}'
 ```
 
-### 3. `serve-hf-remote`
-Don't have hardware? You can serve a node utilizing Hugging Face's serverless Inference API. Your peer acts as a remote tunneling proxy!
+### Run the whole stack locally
 
-**Full Usage:** `python -m bee2bee serve-hf-remote --model <model> --token <hf_token> --region <region> --api-port <port>`
-
-**Example:**
 ```bash
-python -m bee2bee serve-hf-remote --model HuggingFaceH4/zephyr-7b-beta --token hf_YOUR_SECRET --api-port 8080 --region Cloud
+docker compose up --build     # demo node + gateway + web app on http://localhost:3001
 ```
 
-### 4. `register`
-Manually prompt the Global Supabase registry to verify and route traffic to your node endpoint directly via a handshake test.
+## CLI
 
-**Full Usage:** `python -m bee2bee register --node-url <url> --network <network> --region <region> --test`
+| Command | Purpose |
+|---|---|
+| `bee2bee serve-ollama/serve-hf/serve-hf-remote/serve-echo` | Serve a model (`--model --region --public-host --port --api-port --bootstrap --price`) |
+| `bee2bee relay` | Node without a model |
+| `bee2bee api-key [--rotate]` | Show or rotate the local API key |
+| `bee2bee identity` | Show the node's peer id and public key |
+| `bee2bee config bootstrap_url wss://host:4003` | Persist a bootstrap peer |
+| `bee2bee register` | Register once with the registry (normally automatic) |
 
-**Example:**
+All settings are environment variables; see [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
+
+## Repository layout
+
+| Path | What |
+|---|---|
+| `bee2bee/` | Python package: node, protocol, backends, HTTP API, CLI |
+| `gateway/` | Node.js gateway: mesh bridge, web/OpenAI API, accounts, registry |
+| `app/` | React/TypeScript web app (CoitHub) |
+| `supabase/` | Database migrations and RLS tests |
+| `deploy/`, `Dockerfile`, `docker-compose.yml` | Deployment |
+| `loadtest/` | k6 and dependency-free load tests |
+| `docs/` | Architecture, protocol, deployment, runbook |
+
+## Documentation
+
+- [Architecture](docs/ARCHITECTURE.md) · [Wire protocol](docs/PROTOCOL.md) · [Configuration](docs/CONFIGURATION.md)
+- [Deployment](docs/DEPLOYMENT.md) · [Operations runbook](docs/RUNBOOK.md) · [Security policy](SECURITY.md)
+- [Changelog](CHANGELOG.md) · [Production readiness plan](PRODUCTION_READINESS_PLAN.md)
+
+## Development
+
 ```bash
-python -m bee2bee register --node-url http://104.198.62.116:3333 --network connectit --region europe-central --test
+pip install -e ".[dev]" && ruff check bee2bee tests && mypy && pytest
+(cd gateway && npm ci && npm run lint && npm test)
+(cd app && npm ci && npm run lint && npm run typecheck && npm test && npm run test:e2e)
+PGHOST=... PGUSER=postgres supabase/tests/run.sh
 ```
 
----
-
-## 🤝 Community & Support
-
-Built with ❤️ by **Loay Abdelsalam** and the **ConnectIT Team**.
-- **Developer Support**: Find open-source code on [GitHub](https://github.com/Chatit-cloud/BEE2BEE).
-- **Dashboard**: [Bee2Bee ConnectIT Platform](https://coithub.org)
+Built by **Loay Abdelsalam** and the **ConnectIT team**. MIT licensed.

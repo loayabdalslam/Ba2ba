@@ -1,0 +1,48 @@
+# Local full stack: one demo node, the gateway and the web app.
+#   docker compose up --build            -> http://localhost:3001
+#   docker compose --profile ollama up   -> also run Ollama (then use serve-ollama, see below)
+# Copy .env.example to .env to configure Supabase and other settings.
+services:
+  node:
+    build: .
+    command: ["serve-echo", "--model", "echo"]
+    environment:
+      BEE2BEE_ANNOUNCE_HOST: node
+      BEE2BEE_API_KEY: ${BEE2BEE_API_KEY:-change-me-local-only}
+      BEE2BEE_REGISTRY_URL: http://gateway:3001
+    volumes: [node-data:/data]
+    ports: ["4003:4003", "4002:4002"]
+    restart: unless-stopped
+    # To serve a real model instead of the echo backend:
+    #   command: ["serve-ollama", "--model", "llama3.2"]
+    #   environment: { OLLAMA_HOST: "http://ollama:11434" }
+
+  gateway:
+    build:
+      context: .
+      dockerfile: gateway/Dockerfile
+      args:
+        VITE_SUPABASE_URL: ${SUPABASE_URL:-}
+        VITE_SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY:-}
+    environment:
+      BEE2BEE_SEEDS: ws://node:4003
+      ALLOW_PRIVATE_NODES: "true" # compose uses a private network; keep false in production
+      SUPABASE_URL: ${SUPABASE_URL:-}
+      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY:-}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-}
+      STATIC_API_KEYS: ${STATIC_API_KEYS:-}
+      METRICS_TOKEN: ${METRICS_TOKEN:-}
+    volumes: [gateway-data:/data]
+    ports: ["3001:3001"]
+    depends_on: [node]
+    restart: unless-stopped
+
+  ollama:
+    image: ollama/ollama:latest
+    profiles: [ollama]
+    volumes: [ollama-data:/root/.ollama]
+
+volumes:
+  node-data:
+  gateway-data:
+  ollama-data:

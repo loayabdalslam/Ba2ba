@@ -1,0 +1,23 @@
+# TLS termination for a public deployment (automatic Let's Encrypt certificates).
+# docker run -d -p 80:80 -p 443:443 -v $PWD/deploy/Caddyfile:/etc/caddy/Caddyfile caddy:2
+{
+	email ops@example.com
+}
+
+coithub.example.com {
+	encode zstd gzip
+	header {
+		Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+		X-Frame-Options DENY
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+	}
+	reverse_proxy gateway:3001 {
+		flush_interval -1 # stream tokens immediately
+	}
+}
+
+# Public P2P endpoint for a node: peers connect with wss://mesh.example.com
+# (start the node with BEE2BEE_ANNOUNCE_ADDR=wss://mesh.example.com)
+mesh.example.com {
+	reverse_proxy node:4003
+}

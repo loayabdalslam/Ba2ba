@@ -210,7 +210,7 @@ export function createApp({ config, mesh, db = null, metrics }) {
 
   // ---------------------------------------------------------------- health
   app.get('/healthz', (req, res) => res.json({ status: 'ok' }));
-  app.get('/readyz', (req, res) => res.json({ status: 'ready', nodes: mesh.nodes.size, database: Boolean(db) }));
+  app.get('/readyz', (req, res) => res.json({ status: 'ready', nodes: mesh.nodes.size, database: Boolean(db), peer_id: mesh.identity.peerId }));
   app.get('/metrics', (req, res) => {
     if (config.metricsToken && !timingSafeEqualStr(bearer(req) || '', config.metricsToken)) {
       return res.status(401).json({ error: 'unauthorized' });

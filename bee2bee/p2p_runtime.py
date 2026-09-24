@@ -11,6 +11,7 @@ import time
 from contextlib import aclosing
 from dataclasses import replace
 from typing import Any, AsyncGenerator, Dict, Iterable, List, Optional, Set, Union
+from urllib.parse import urlparse
 
 from loguru import logger
 from websockets.asyncio.client import connect
@@ -276,6 +277,10 @@ class P2PNode:
         return None
 
     async def _resolve_announce_addr(self) -> None:
+        if self.settings.announce_addr:
+            self.addr = validate_peer_addr(self.settings.announce_addr, resolve=False)
+            self.public_host = urlparse(self.addr).hostname
+            return
         scheme = "wss" if self.settings.tls_enabled else "ws"
         host = self.settings.announce_host
         port = self.settings.announce_port or self.port
@@ -692,7 +697,8 @@ class P2PNode:
         rid = data.get("rid") or data.get("task_id")
         if not isinstance(rid, str) or not rid or len(rid) > 100:
             return
-        allowed, _ = self._peer_limiter.allow(conn.peer_id or conn.remote)
+        trusted = conn.peer_id in self.settings.trusted_peers
+        allowed = trusted or self._peer_limiter.allow(conn.peer_id or conn.remote)[0]
         if not allowed:
             await self._send(conn, {"type": P.GEN_ERROR, "rid": rid, "code": "rate_limited", "error": "rate limited"})
             return
@@ -938,7 +944,8 @@ class P2PNode:
                         code = payload.get("code") if payload.get("code") in P.ERROR_CODES else "provider_error"
                         raise GenerationError(code, str(payload.get("error") or code)[:300])
             except GenerationError as e:
-                if e.code not in ("bad_request", "cancelled"):
+                # Capacity signals (busy, rate_limited) are not failures of the node.
+                if e.code not in ("bad_request", "cancelled", "busy", "rate_limited"):
                     self._stats(pid).failure()
                 last_error = e
                 if emitted or e.code == "bad_request":

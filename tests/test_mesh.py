@@ -271,3 +271,28 @@ async def test_dead_peer_is_evicted(node_factory):
     b._send = silent
     # ping_interval is 0.5s, so a evicts b after ~1.5s of silence.
     await wait_for(lambda: b.peer_id not in a.peers, timeout=5)
+
+
+async def test_trusted_peer_bypasses_rate_limit(node_factory):
+    a = await node_factory()
+    b = await node_factory(services=[EchoService("m")], peer_rate_limit_per_minute=1, trusted_peers=[a.peer_id])
+    await _link(a, b)
+    for _ in range(5):
+        assert (await a.generate(GenerationRequest(prompt="ok", model="m")))["text"] == "ok"
+
+
+async def test_capacity_errors_do_not_hurt_reputation(node_factory):
+    a = await node_factory()
+    b = await node_factory(services=[EchoService("m")], peer_rate_limit_per_minute=1)
+    await _link(a, b)
+    b._peer_limiter.capacity = 1
+    b._peer_limiter._buckets.clear()
+    await a.generate(GenerationRequest(prompt="ok", model="m"))
+    with pytest.raises(GenerationError):
+        await a.generate(GenerationRequest(prompt="again", model="m"))
+    assert a.provider_stats[b.peer_id].failures == 0
+
+
+async def test_announce_addr_override(node_factory):
+    a = await node_factory(announce_addr="wss://mesh.example.com")
+    assert a.addr == "wss://mesh.example.com"

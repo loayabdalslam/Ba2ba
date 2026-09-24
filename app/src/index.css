@@ -1,5 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
 @import "tailwindcss";
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
 
 @theme {
   --font-sans: 'Inter', sans-serif;
@@ -64,7 +64,6 @@ body {
 }
 
 /* Markdown & AI Response Styling */
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap');
 
 .prose-minimal {
   @apply text-[15px] leading-[1.8] text-black font-normal;
@@ -124,3 +123,20 @@ body {
 .katex { @apply text-black text-lg; }
 
 .prose-minimal img { @apply rounded-3xl shadow-xl my-10 border border-gray-100; }
+/* Form controls */
+.field {
+  @apply w-full h-12 bg-gray-50 border border-transparent rounded-2xl px-4 text-sm outline-none focus:border-black/10 focus:bg-white transition-colors;
+}
+
+.card {
+  @apply bg-white rounded-[32px] p-8 border border-gray-100 shadow-2xl shadow-black/[0.02];
+}
+
+.label {
+  @apply text-[10px] font-bold text-gray-400 uppercase tracking-widest;
+}
+
+:focus-visible {
+  outline: 2px solid #000;
+  outline-offset: 2px;
+}

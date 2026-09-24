@@ -114,6 +114,7 @@ export class Mesh extends EventEmitter {
   }
 
   start() {
+    setImmediate(() => this.#maintain()); // dial seeds right away
     this.timer = setInterval(() => this.#maintain(), 5000);
     this.timer.unref?.();
   }

@@ -1,37 +1,19 @@
-# CohitHub.org
-### Decentralized Intelligence Hub & Model Routing
+# CoitHub web app
 
-CohitHub.org is a minimalist web application designed to act as a secure entrypoint and router between private LLM models in a decentralized mesh network.
+React 18 + TypeScript + Vite + Tailwind v4. Talks only to the Bee2Bee gateway (`/api`, `/v1`);
+it never connects to nodes directly.
 
-## Features
-- **Minimalist Design**: Typography-first, high-end aesthetic inspired by modern SaaS platforms.
-- **Model Routing**: Seamlessly switch between different neural points and specialized models.
-- **Mesh Synchronization**: Real-time telemetry and health monitoring of network nodes.
-- **Secure Communication**: End-to-end encrypted protocol paths.
+```bash
+npm install
+cp .env.example .env        # optional: Supabase public keys, gateway URL
+npm run dev                 # http://localhost:3000, proxies /api to the gateway on :3001
+npm run lint && npm run typecheck && npm test
+npm run build               # static files in dist/
+npm run test:e2e            # Playwright: Python echo node + gateway + browser
+```
 
-## Technologies
-- **Core**: React 18, TypeScript, Vite
-- **Styling**: Tailwind CSS v4, Framer Motion
-- **Icons**: Lucide React
+Pages: `/` landing with live mesh stats, `/chat`, `/register?link=…` (node onboarding),
+`/account` (sign in, API keys, usage), `/docs`, `/privacy`, `/terms`.
 
-## Getting Started
-
-1. **Install Dependencies**:
-   ```bash
-   npm install
-   ```
-
-2. **Run Development Server**:
-   ```bash
-   npm run dev
-   ```
-
-3. **Build for Production**:
-   ```bash
-   npm run build
-   ```
-
-## Configuration
-Access the **Nexus Core Settings** via the gear icon in the sidebar to configure your protocol endpoint and authentication keys.
-- Default API: `http://127.0.0.1:4002`
-- Authentication: `X-API-KEY` header
+Deploy `dist/` anywhere static (Vercel config included: it rewrites `/api` and `/v1` to the
+gateway), or let the gateway serve it with `STATIC_DIR` (see the root Dockerfile).

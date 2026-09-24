@@ -264,5 +264,10 @@ async def test_dead_peer_is_evicted(node_factory):
     a = await node_factory()
     b = await node_factory()
     await _link(a, b)
-    a.peers[b.peer_id].last_seen -= 100
+
+    async def silent(conn, obj):  # b stops answering at the application level
+        return True
+
+    b._send = silent
+    # ping_interval is 0.5s, so a evicts b after ~1.5s of silence.
     await wait_for(lambda: b.peer_id not in a.peers, timeout=5)
